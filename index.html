@@ -146,7 +146,7 @@ table.qt th img{width:20px;height:20px;object-fit:contain;vertical-align:middle;
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.35</div>
+<div class="ver">v1.36</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -631,36 +631,40 @@ async function f1Standings() {
   };
 }
 
-// Grands Prix via ESPN : sert uniquement à détecter la course en direct (le programme vient de Jolpica)
-function f1ParseEspn(ev) {
-  const t = ev.status?.type || {};
-  const comp = (ev.competitions || [])[0] || {};
-  const rows = (comp.competitors || []).slice().sort((a, b) => (a.order ?? 99) - (b.order ?? 99)).map(c => ({
-    name: c.athlete?.displayName || c.athlete?.shortName || "",
-    team: c.team?.displayName || c.vehicle?.displayName || ""
-  }));
-  return { id: ev.id, name: ev.name || "", date: new Date(ev.date), state: t.state || "", detail: t.shortDetail || t.detail || "", rows };
-}
+// Direct F1 via OpenF1 (API gratuite, open source, sans clé selon sa documentation)
+const OPENF1 = "https://api.openf1.org/v1/";
 async function f1Live() {
-  const t = new Date(); t.setHours(0, 0, 0, 0);
-  const found = [];
-  const errors = [];
-  try {
-    const j = await getJSON(`${SCORES}racing/f1/scoreboard`);
-    found.push(...(j.events || []).map(f1ParseEspn));
-  } catch (e) { errors.push(e.message); }
-  if (!found.some(e => e.state === "in")) {
-    try {
-      const j = await getJSON(`${SCORES}racing/f1/scoreboard?dates=${ymd(addDays(t, -1))}-${ymd(addDays(t, 1))}`);
-      found.push(...(j.events || []).map(f1ParseEspn));
-    } catch (e) { errors.push(e.message); }
+  const sessions = await getJSON(`${OPENF1}sessions?session_key=latest`);
+  const s = (sessions || [])[0];
+  if (!s) return { live: null, info: "aucune session renvoyée" };
+  const now = Date.now();
+  const start = Date.parse(s.date_start), end = Date.parse(s.date_end);
+  const label = `${s.country_name || ""} · ${s.session_name || ""}`;
+  const ongoing = now >= start - 5 * 60000 && now <= end + 10 * 60000;
+  if (!ongoing) return { live: null, info: `${label} : pas en cours` };
+  liveNow = true;
+  const since = new Date(now - 5 * 60000).toISOString();
+  const [pos, drv] = await Promise.all([
+    getJSON(`${OPENF1}position?session_key=${s.session_key}&date>=${since}`),
+    getJSON(`${OPENF1}drivers?session_key=${s.session_key}`)
+  ]);
+  const byNum = new Map((drv || []).map(d => [d.driver_number, d]));
+  const latest = new Map();
+  for (const p of pos || []) {
+    const cur = latest.get(p.driver_number);
+    if (!cur || p.date > cur.date) latest.set(p.driver_number, p);
   }
-  const ev = found.find(e => e.state === "in");
-  if (ev) liveNow = true;
-  const info = errors.length ? "erreur ESPN : " + errors.join(", ")
-    : found.length ? found.map(e => `${e.name} (${e.state}${e.detail ? " · " + e.detail : ""})`).join(" ; ")
-    : "aucun événement renvoyé";
-  return { live: ev ? { name: ev.name, rows: ev.rows } : null, info };
+  const rows = [...latest.values()].sort((a, b) => a.position - b.position).map(p => {
+    const d = byNum.get(p.driver_number) || {};
+    const name = d.full_name || d.name_acronym || String(p.driver_number);
+    const team = d.team_name || "";
+    if (d.team_colour) {
+      f1Colors.set(name, [d.team_colour, d.team_colour]);
+      if (team) f1Colors.set(team, [d.team_colour, d.team_colour]);
+    }
+    return { name, team };
+  });
+  return { live: { name: label, rows }, info: `${label} : en cours` };
 }
 
 function f1ListHTML(list) {
@@ -754,9 +758,9 @@ async function f1Tab(tab) {
   if (tab === "favs") return f1FavsCard(await f1Standings());
   const races = await f1Season();
   if (tab === "stats") return f1StatsHTML(races);
-  const lv = await f1Live().catch(e => ({ live: null, info: "erreur : " + e.message }));
+  const lv = await f1Live().catch(e => ({ live: null, info: "erreur OpenF1 : " + e.message }));
   const live = lv.live;
-  const liveHTML = (live ? f1LiveHTML(live) : "") + `<p class="meta" style="margin:8px 4px">Direct ESPN : ${esc(lv.info)}</p>`;
+  const liveHTML = (live ? f1LiveHTML(live) : "") + `<p class="meta" style="margin:8px 4px">Direct OpenF1 : ${esc(lv.info)}</p>`;
   if (state.matchView === "results") {
     if (state.raceId) {
       const r = races.find(x => String(x.round) === String(state.raceId));
