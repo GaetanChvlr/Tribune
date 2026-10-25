@@ -93,7 +93,7 @@ table.pl td.pn{padding-left:8px;font-weight:600;white-space:nowrap;overflow:hidd
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.7</div>
+<div class="ver">v1.8</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -415,7 +415,7 @@ async function detailHTML(id, league) {
     const athletes = (block?.athletes || [])
       .filter(x => (x.stats || []).length)
       .map(x => ({ name: x.athlete?.displayName || x.athlete?.shortName || "", stats: x.stats }))
-      .sort((x, y) => (parseInt(x.stats[names.indexOf("PTS")], 10) || 0) - (parseInt(y.stats[names.indexOf("PTS")], 10) || 0) * 0 - (parseInt(y.stats[names.indexOf("PTS")], 10) || 0));
+      .sort((x, y) => (parseInt(y.stats[names.indexOf("PTS")], 10) || 0) - (parseInt(x.stats[names.indexOf("PTS")], 10) || 0));
     for (const p of athletes) {
       const cells = cols.map(([k]) => {
         const idx = names.indexOf(k);
