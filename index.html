@@ -150,7 +150,7 @@ table.qt th img{width:20px;height:20px;object-fit:contain;vertical-align:middle;
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.40</div>
+<div class="ver">v1.41</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -198,12 +198,12 @@ const LANDING = [
   {key: "F1", group: "Automobile", sub: "Programme, résultats, pilotes et écuries", logo: "https://a.espncdn.com/i/teamlogos/leagues/500/f1.png"},
   {key: "Ligue 1", group: "Football", soon: true, logo: "https://commons.wikimedia.org/wiki/Special:FilePath/Ligue_1_Uber_Eats_logo.svg"},
   {key: "Ligue 2", group: "Football", soon: true},
-  {key: "Ligue 3", group: "Football", soon: true},
-  {key: "Ligue des Champions", group: "Football", soon: true, logo: "https://commons.wikimedia.org/wiki/Special:FilePath/UEFA_Champions_League_logo_2.svg"},
-  {key: "Europa League", group: "Football", soon: true, logo: "https://commons.wikimedia.org/wiki/Special:FilePath/UEFA_Europa_League_logo_2.svg"},
-  {key: "National 2", group: "Football", soon: true},
-  {key: "Fédérale 3", group: "Rugby", soon: true},
-  {key: "Excellence B", group: "Rugby", soon: true}
+  {key: "Ligue 3", group: "Football", soon: true, logo: "logos/ligue3.jpg"},
+  {key: "Ligue des Champions", group: "Football", soon: true, logo: "logos/ucl.webp"},
+  {key: "Europa League", group: "Football", soon: true, logo: "logos/europa.jpg"},
+  {key: "National", group: "Football", soon: true, logo: "logos/national.jpg"},
+  {key: "Fédérale 3", group: "Rugby", soon: true, logo: "logos/federale3.jpg"},
+  {key: "Excellence B", group: "Rugby", soon: true, logo: "logos/rugby.jpg"}
 ];
 function landingHTML() {
   const groups = [...new Set(LANDING.map(l => l.group))];
