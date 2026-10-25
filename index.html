@@ -96,7 +96,7 @@ table.pl td.pn{padding-left:8px;font-weight:600;white-space:nowrap;overflow:hidd
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.14</div>
+<div class="ver">v1.15</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -115,6 +115,7 @@ const TABS = [
   {key: "cal", label: "Calendrier"},
   {key: "results", label: "Résultats"},
   {key: "standings", label: "Classement"},
+  {key: "mvp", label: "MVP"},
   {key: "favs", label: "Favoris"}
 ];
 
@@ -122,7 +123,7 @@ const REFRESH_LIVE = 60 * 1000;            // match en cours
 const REFRESH_IDLE = 3 * 60 * 60 * 1000;   // le reste
 const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 
-const state = { league: "NBA", tab: "mine", detail: null, teamFilter: "" };
+const state = { league: "NBA", tab: "mine", detail: null, teamFilter: "", mvpPeriod: "nuit", mvpKey: "" };
 let favs = loadFavs();
 let token = 0;
 let refreshTimer = null;
@@ -492,6 +493,58 @@ async function detailHTML(id, league) {
   </section>`;
 }
 
+// Classements MVP : lus depuis data/mvp.json, généré chaque nuit par GitHub Actions
+function dayLabel(k) {
+  const s = new Date(k + "T12:00:00Z").toLocaleDateString("fr-FR", {timeZone: "UTC", weekday: "long", day: "numeric", month: "long"});
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function monthLabel(k) {
+  return new Date(k + "-01T12:00:00Z").toLocaleDateString("fr-FR", {timeZone: "UTC", month: "long", year: "numeric"});
+}
+
+async function mvpHTML() {
+  let data;
+  try {
+    const r = await fetch("data/mvp.json", {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    data = await r.json();
+  } catch (e) {
+    return `<section class="card"><h2>MVP</h2><p class="empty">Classement pas encore disponible. Il sera généré après la première mise à jour automatique.</p></section>`;
+  }
+
+  const per = state.mvpPeriod;
+  const buckets = { nuit: data.nights, semaine: data.weeks, mois: data.months, saison: data.season };
+  const bucket = buckets[per] || {};
+  const keys = Object.keys(bucket).sort().reverse();
+  const labelOf = k => per === "nuit" ? dayLabel(k)
+    : per === "semaine" ? "Semaine du " + dayLabel(k).toLowerCase()
+    : per === "mois" ? monthLabel(k)
+    : `Saison ${k}`;
+
+  const periodButtons = [["nuit", "Nuit"], ["semaine", "Semaine"], ["mois", "Mois"], ["saison", "Saison"]]
+    .map(([k, l]) => `<button data-mvp="${k}" class="${k === per ? "on" : ""}">${l}</button>`).join("");
+  const nav = `<div class="nav">${periodButtons}</div>`;
+
+  if (!keys.length) {
+    return `${nav}<section class="card"><p class="empty">Aucune donnée pour cette période.</p></section>`;
+  }
+  if (!state.mvpKey || !bucket[state.mvpKey]) state.mvpKey = keys[0];
+
+  const select = `<select class="filter" id="mvpKey">${keys.map(k =>
+    `<option value="${esc(k)}"${k === state.mvpKey ? " selected" : ""}>${esc(labelOf(k))}</option>`).join("")}</select>`;
+  const list = bucket[state.mvpKey] || [];
+  const minText = per === "mois" || per === "saison" ? "3 matchs minimum" : "1 match minimum";
+  const rows = list.map((p, i) =>
+    `<tr><td>${i + 1}. ${esc(p.name)}</td><td>${esc(p.team)}</td><td><b>${esc(p.gmsc)}</b></td><td>${esc(p.games)}</td></tr>`).join("");
+
+  return `${nav}<section class="card">
+    <h2>Top 10 MVP</h2>
+    ${select}
+    <p class="meta">Game Score moyen par match · ${minText}</p>
+    <table class="pl"><tr><th>Joueur</th><th>Équipe</th><th>GmSc</th><th>Matchs</th></tr>${rows}</table>
+  </section>`;
+}
+
 function renderNav() {
   document.getElementById("leagues").innerHTML = Object.keys(LEAGUES).map(l =>
     `<button data-league="${esc(l)}" class="${l === state.league ? "on" : ""}">${esc(l)}</button>`).join("");
@@ -562,6 +615,8 @@ async function render(opts = {}) {
         const shown = played.filter(e => !state.teamFilter || e.cs.some(c => c.name === state.teamFilter));
         const select = `<select class="filter" id="teamFilter"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}"${t === state.teamFilter ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
         html = `<section class="card"><h2>Résultats : saison en cours</h2>${select}${shown.length ? shown.map(matchHTML).join("") : '<p class="empty">Aucun résultat pour cette sélection.</p>'}</section>`;
+      } else if (state.tab === "mvp") {
+        html = await mvpHTML();
       } else if (state.tab === "favs") {
         let teams = [];
         try { teams = await loadTeams(L); } catch (e) { teams = []; }
@@ -583,6 +638,8 @@ async function render(opts = {}) {
 const appEl = document.getElementById("app");
 appEl.addEventListener("click", e => {
   if (e.target.closest("[data-back]")) { state.detail = null; render(); return; }
+  const mb = e.target.closest("button[data-mvp]");
+  if (mb) { state.mvpPeriod = mb.dataset.mvp; state.mvpKey = ""; render(); return; }
   const m = e.target.closest(".match[data-id]");
   if (m) { state.detail = m.dataset.id; render(); return; }
   const d = e.target.closest(".del");
@@ -604,9 +661,13 @@ appEl.addEventListener("submit", e => {
   render();
 });
 appEl.addEventListener("change", e => {
-  if (e.target.id !== "teamFilter") return;
-  state.teamFilter = e.target.value;
-  render({silent: true});
+  if (e.target.id === "teamFilter") {
+    state.teamFilter = e.target.value;
+    render({silent: true});
+  } else if (e.target.id === "mvpKey") {
+    state.mvpKey = e.target.value;
+    render({silent: true});
+  }
 });
 // Mémorise les conférences dépliées pour les garder après un rafraîchissement
 appEl.addEventListener("toggle", e => {
