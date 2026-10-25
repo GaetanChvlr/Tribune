@@ -35,6 +35,7 @@ li:last-child{border-bottom:0}
 .nm{flex:1}
 h2{font-size:17px;margin:0 0 6px}
 b{font-variant-numeric:tabular-nums}
+.logo{width:22px;height:22px;vertical-align:middle;margin-right:6px;object-fit:contain}
 </style>
 </head>
 <body>
@@ -96,7 +97,8 @@ function parseEvent(ev) {
   const comp = (ev.competitions || [])[0] || {};
   const cs = (comp.competitors || []).map(c => ({
     name: c.team?.displayName || c.athlete?.displayName || c.displayName || "",
-    score: c.score ?? ""
+    score: c.score ?? "",
+    logo: c.team?.logo || ""
   }));
   const t = ev.status?.type || {};
   return {
@@ -142,8 +144,9 @@ function isFav(text, league) {
 function eventHTML(e, league) {
   const fav = e.cs.some(c => isFav(c.name, league)) || isFav(e.name, league);
   const when = e.date.toLocaleString("fr-FR", {weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
+  const logo = url => url ? `<img class="logo" src="${esc(url)}" alt="">` : "";
   const title = e.cs.length === 2
-    ? `${esc(e.cs[0].name)} <b>${esc(e.cs[0].score)} - ${esc(e.cs[1].score)}</b> ${esc(e.cs[1].name)}`
+    ? `${logo(e.cs[0].logo)}${esc(e.cs[0].name)} <b>${esc(e.cs[0].score)} - ${esc(e.cs[1].score)}</b> ${esc(e.cs[1].name)}${logo(e.cs[1].logo)}`
     : esc(e.name);
   const live = e.state === "in" ? '<span class="live">EN DIRECT</span>' : "";
   const status = e.state === "pre" ? when : (esc(e.detail) || when);
@@ -160,9 +163,19 @@ function listCard(title, evs, league, emptyMsg) {
 let teamsCache = {};
 async function loadTeams(league) {
   if (teamsCache[league]) return teamsCache[league];
-  const j = await getJSON(`${SCORES}${LEAGUES[league].path}/teams`);
-  const list = (j.sports?.[0]?.leagues?.[0]?.teams || [])
-    .map(t => t.team?.displayName).filter(Boolean).sort((a, b) => a.localeCompare(b, "fr"));
+  let names = [];
+  try {
+    const j = await getJSON(`${SCORES}${LEAGUES[league].path}/teams`);
+    names = (j.sports?.[0]?.leagues?.[0]?.teams || []).map(t => t.team?.displayName);
+  } catch (e) {}
+  if (!names.filter(Boolean).length) {
+    // Repli : liste extraite du classement, dont le chargement fonctionne
+    const j = await getJSON(`${STANDINGS}${LEAGUES[league].path}/standings`);
+    for (const g of (j.children || [])) {
+      for (const en of (g.standings?.entries || [])) names.push(en.team?.displayName);
+    }
+  }
+  const list = [...new Set(names.filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
   teamsCache[league] = list;
   return list;
 }
@@ -195,12 +208,14 @@ async function standingsHTML(league) {
     const rows = entries.map((en, i) => {
       const st = Object.fromEntries((en.stats || []).map(s => [s.name, s.displayValue]));
       const name = en.team?.displayName || en.athlete?.displayName || "?";
+      const logoUrl = en.team?.logos?.[0]?.href || en.team?.logo || "";
+      const logo = logoUrl ? `<img class="logo" src="${esc(logoUrl)}" alt="">` : "";
       const fav = isFav(name, league) ? '<span class="star">★</span>' : "";
       const parts = [];
       if (st.points !== undefined) parts.push(`${st.points} pts`);
       if (st.gamesPlayed !== undefined) parts.push(`${st.gamesPlayed} matchs`);
       if (st.wins !== undefined) parts.push(`${st.wins}V ${st.losses ?? ""}D`);
-      return `<li><span class="rank">${esc(st.rank ?? i + 1)}</span><span class="nm">${fav}${esc(name)}</span><span class="meta">${esc(parts.join(" · "))}</span></li>`;
+      return `<li><span class="rank">${esc(st.rank ?? i + 1)}</span><span class="nm">${fav}${logo}${esc(name)}</span><span class="meta">${esc(parts.join(" · "))}</span></li>`;
     }).join("");
     out += `<section class="card"><h2>${esc(g.name || "Classement")}</h2><ul>${rows}</ul></section>`;
   }
