@@ -157,15 +157,28 @@ function listCard(title, evs, league, emptyMsg) {
   return `<section class="card"><h2>${esc(title)}</h2>${body}</section>`;
 }
 
-function favsCard(league) {
+let teamsCache = {};
+async function loadTeams(league) {
+  if (teamsCache[league]) return teamsCache[league];
+  const j = await getJSON(`${SCORES}${LEAGUES[league].path}/teams`);
+  const list = (j.sports?.[0]?.leagues?.[0]?.teams || [])
+    .map(t => t.team?.displayName).filter(Boolean).sort((a, b) => a.localeCompare(b, "fr"));
+  teamsCache[league] = list;
+  return list;
+}
+
+function favsCard(league, teams) {
   const items = favs[league] || [];
   const rows = items.map((n, i) =>
     `<li><span><span class="star">★</span>${esc(n)}</span><button class="del" data-i="${i}" aria-label="Retirer">×</button></li>`
   ).join("");
+  const picker = teams && teams.length
+    ? `<select id="favInput"><option value="">Choisir une équipe…</option>${teams.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select>`
+    : `<input id="favInput" autocomplete="off" placeholder="${esc(LEAGUES[league].ph)}">`;
   return `<section class="card">
     <h2>Mes favoris</h2>
     <form id="addForm">
-      <input id="favInput" autocomplete="off" placeholder="${esc(LEAGUES[league].ph)}">
+      ${picker}
       <button class="add" type="submit">Ajouter</button>
     </form>
     <ul>${rows}</ul>
@@ -208,7 +221,14 @@ async function render() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const app = document.getElementById("app");
   const favsEl = document.getElementById("favs");
-  favsEl.innerHTML = state.tab === 0 ? favsCard(L) : "";
+  if (state.tab === 0) {
+    let teams = [];
+    try { teams = await loadTeams(L); } catch (e) { teams = []; }
+    if (my !== token) return;
+    favsEl.innerHTML = favsCard(L, teams);
+  } else {
+    favsEl.innerHTML = "";
+  }
   app.innerHTML = '<p class="empty">Chargement…</p>';
 
   try {
@@ -244,7 +264,7 @@ function attachHandlers() {
   if (form) form.addEventListener("submit", e => {
     e.preventDefault();
     const input = document.getElementById("favInput");
-    const v = input.value.trim();
+    const v = (input.value || "").trim();
     if (!v) return;
     favs[state.league] = favs[state.league] || [];
     if (!favs[state.league].includes(v)) favs[state.league].push(v);
