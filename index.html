@@ -139,7 +139,7 @@ table.qt th img{width:20px;height:20px;object-fit:contain;vertical-align:middle;
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.31</div>
+<div class="ver">v1.32</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -539,6 +539,26 @@ async function f1Get(p, q = "") {
   return d;
 }
 
+// Toutes les pages d'un endpoint Jolpica (une réponse est plafonnée à 100 lignes)
+async function f1All(p, field) {
+  const races = new Map();
+  let offset = 0, total = Infinity;
+  while (offset < total && offset < 1000) {
+    const d = await f1Get(p, `?limit=100&offset=${offset}`);
+    total = Number(d.total) || 0;
+    const page = d.RaceTable?.Races || [];
+    if (!page.length) break;
+    for (const r of page) {
+      const k = Number(r.round);
+      const cur = races.get(k);
+      if (cur) cur[field] = [...(cur[field] || []), ...(r[field] || [])];
+      else races.set(k, { ...r, [field]: [...(r[field] || [])] });
+    }
+    offset += 100;
+  }
+  return races;
+}
+
 // Un résultat (course ou qualification) ramené à une forme simple
 function f1Person(x) {
   const team = x.Constructor || {};
@@ -554,15 +574,13 @@ function f1Person(x) {
   };
 }
 
-// Calendrier de la saison, avec résultats et qualifications quand ils existent (3 appels)
+// Calendrier de la saison, avec résultats et qualifications quand ils existent
 async function f1Season() {
-  const [sch, res, qua] = await Promise.all([
+  const [sch, resBy, quaBy] = await Promise.all([
     f1Get("current"),
-    f1Get("current/results", "?limit=1000"),
-    f1Get("current/qualifying", "?limit=1000")
+    f1All("current/results", "Results"),
+    f1All("current/qualifying", "QualifyingResults")
   ]);
-  const resBy = new Map((res.RaceTable?.Races || []).map(r => [Number(r.round), r]));
-  const quaBy = new Map((qua.RaceTable?.Races || []).map(r => [Number(r.round), r.QualifyingResults || []]));
   return (sch.RaceTable?.Races || []).map(r => {
     const round = Number(r.round);
     const rr = resBy.get(round);
@@ -573,7 +591,7 @@ async function f1Season() {
       dateStr: r.date || "",
       date: new Date(`${r.date}T${r.time || "12:00:00Z"}`),
       results: (rr?.Results || []).map(f1Person),
-      quali: (quaBy.get(round) || []).map(f1Person)
+      quali: (quaBy.get(round)?.QualifyingResults || []).map(f1Person)
     };
   });
 }
@@ -595,19 +613,28 @@ async function f1Standings() {
   };
 }
 
-// Course en cours via ESPN (seul endroit où le direct est disponible)
+// Grands Prix via ESPN : programme, direct et course à venir
+async function f1Espn(from, to) {
+  const j = await getJSON(`${SCORES}racing/f1/scoreboard?dates=${ymd(from)}-${ymd(to)}`);
+  return (j.events || []).map(ev => {
+    const t = ev.status?.type || {};
+    if (t.state === "in") liveNow = true;
+    const comp = (ev.competitions || [])[0] || {};
+    const rows = (comp.competitors || []).slice().sort((a, b) => (a.order ?? 99) - (b.order ?? 99)).map(c => ({
+      name: c.athlete?.displayName || c.athlete?.shortName || "",
+      team: c.team?.displayName || c.vehicle?.displayName || ""
+    }));
+    return { id: ev.id, name: ev.name || "", date: new Date(ev.date), state: t.state || "", detail: t.shortDetail || t.detail || "", rows };
+  }).sort((a, b) => a.date - b.date);
+}
 async function f1Live() {
   const t = new Date(); t.setHours(0, 0, 0, 0);
-  const j = await getJSON(`${SCORES}racing/f1/scoreboard?dates=${ymd(addDays(t, -1))}-${ymd(addDays(t, 1))}`);
-  const ev = (j.events || []).find(e => e.status?.type?.state === "in");
-  if (!ev) return null;
-  liveNow = true;
-  const comp = (ev.competitions || [])[0] || {};
-  const rows = (comp.competitors || []).slice().sort((a, b) => (a.order ?? 99) - (b.order ?? 99)).map(c => ({
-    name: c.athlete?.displayName || c.athlete?.shortName || "",
-    team: c.team?.displayName || c.vehicle?.displayName || ""
-  }));
-  return { name: ev.name || "", rows };
+  const ev = (await f1Espn(addDays(t, -1), addDays(t, 1))).find(e => e.state === "in");
+  return ev ? { name: ev.name, rows: ev.rows } : null;
+}
+function f1EspnCard(e) {
+  const when = e.date.toLocaleString("fr-FR", {weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
+  return `<div class="race"><h2>${esc(e.name)}</h2><div class="meta">${esc(when)}</div></div>`;
 }
 
 function f1ListHTML(list) {
@@ -640,15 +667,14 @@ function f1LiveHTML(live) {
 }
 
 async function f1Home() {
-  const [s, races] = await Promise.all([f1Standings(), f1Season()]);
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const [s, upcoming] = await Promise.all([f1Standings(), f1Espn(t0, addDays(t0, 60)).catch(() => [])]);
   const favSet = new Set(favs.F1 || []);
-  const t = new Date();
-  const todayStr = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
   const favOut = [...s.drivers, ...s.teams].filter(x => favSet.has(x.name) && x.pos > 3);
   const favHTML = favOut.length ? `<section class="card"><h2>Mes favoris</h2>${f1ListHTML(favOut)}</section>` : "";
-  const next = races.find(r => !r.results.length && r.dateStr >= todayStr);
+  const next = upcoming.find(e => e.state === "pre");
   const nextHTML = next
-    ? `<section class="card"><h2>Prochain Grand Prix</h2><div class="pl-name">${esc(next.name)}</div><div class="pl-line">${esc(next.circuit)}</div><div class="pl-line">${esc(dayTitle(next.date))} · ${esc(next.date.toLocaleTimeString("fr-FR", {hour: "2-digit", minute: "2-digit"}))}</div></section>`
+    ? `<section class="card"><h2>Prochain Grand Prix</h2><div class="pl-name">${esc(next.name)}</div><div class="pl-line">${esc(dayTitle(next.date))} · ${esc(next.date.toLocaleTimeString("fr-FR", {hour: "2-digit", minute: "2-digit"}))}</div></section>`
     : '<section class="card"><p class="empty">Aucun Grand Prix à venir cette saison.</p></section>';
   return `<section class="card"><h2>Podium pilotes</h2>${f1ListHTML(s.drivers.slice(0, 3)) || '<p class="empty">Indisponible.</p>'}</section>`
     + `<section class="card"><h2>Podium écuries</h2>${f1ListHTML(s.teams.slice(0, 3)) || '<p class="empty">Indisponible.</p>'}</section>`
@@ -711,8 +737,12 @@ async function f1Tab(tab) {
     return mviewNav() + (live ? f1LiveHTML(live) : "")
       + `<section class="card"><h2>Résultats : saison en cours</h2>${past.length ? past.map(r => f1RaceCard(r, true)).join("") : '<p class="empty">Aucune course terminée.</p>'}</section>`;
   }
-  const up = races.filter(r => !r.results.length);
-  return mviewNav() + `<section class="card"><h2>Prochains Grands Prix</h2>${up.length ? up.map(r => f1RaceCard(r, false)).join("") : '<p class="empty">Calendrier indisponible.</p>'}</section>`;
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const evs = await f1Espn(t, addDays(t, 60));
+  const live = evs.find(e => e.state === "in");
+  const up = evs.filter(e => e.state === "pre");
+  return mviewNav() + (live ? f1LiveHTML(live) : "")
+    + `<section class="card"><h2>Programme</h2>${up.length ? up.map(f1EspnCard).join("") : '<p class="empty">Aucun Grand Prix prévu dans les 60 prochains jours.</p>'}</section>`;
 }
 
 // ---------- Accueil ----------
