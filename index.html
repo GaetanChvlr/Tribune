@@ -93,7 +93,7 @@ table.pl td.pn{padding-left:8px;font-weight:600;white-space:nowrap;overflow:hidd
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.8</div>
+<div class="ver">v1.9</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -229,8 +229,9 @@ async function getStandings(league) {
 
 function confLetter(name) {
   const s = String(name).toLowerCase();
-  if (s.includes("east") || s.includes("est")) return "E";
+  // « western » contient « est » : on teste d'abord l'Ouest
   if (s.includes("west") || s.includes("ouest")) return "O";
+  if (s.includes("east") || /\best\b/.test(s)) return "E";
   return "";
 }
 
