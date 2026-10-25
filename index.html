@@ -74,6 +74,9 @@ details.conf ul{margin:0 0 8px}
 li.st{padding:9px 8px;border-radius:10px;margin-top:4px;border-bottom:0}
 li.st.direct{background:#16a34a22;box-shadow:inset 3px 0 0 var(--direct)}
 li.st.playin{background:#f59e0b22;box-shadow:inset 3px 0 0 var(--playin)}
+li.st.fav{background:#0369a122;box-shadow:inset 3px 0 0 var(--accent)}
+.race{text-align:left;padding:12px 0;border-bottom:1px solid #94a3b833}
+.race:last-child{border-bottom:0}
 .rank{width:24px;color:var(--muted);font-variant-numeric:tabular-nums}
 .nm{flex:1;display:flex;align-items:center;gap:6px;min-width:0}
 .nm .tn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -136,7 +139,7 @@ table.qt th img{width:20px;height:20px;object-fit:contain;vertical-align:middle;
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.28</div>
+<div class="ver">v1.29</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -145,10 +148,10 @@ const STANDINGS = "https://site.api.espn.com/apis/v2/sports/";
 
 // Version 1 : NBA seule. Pour ajouter un sport, décommentez ou copiez une ligne ci-dessous.
 const LEAGUES = {
-  "NBA": {path: "basketball/nba", startMonth: 9, ph: "ex. Boston Celtics"}
+  "NBA": {path: "basketball/nba", startMonth: 9, ph: "ex. Boston Celtics"},
+  "F1":  {path: "racing/f1", startMonth: 2, ph: "ex. Charles Leclerc"}
   // "Ligue 1": {path: "soccer/fra.1", startMonth: 7, ph: "ex. Paris Saint-Germain"},
-  // "Top 14":  {path: "rugby/270557", startMonth: 7, ph: "ex. Stade Toulousain"},
-  // "F1":      {path: "racing/f1", startMonth: 2, ph: "ex. Charles Leclerc"}
+  // "Top 14":  {path: "rugby/270557", startMonth: 7, ph: "ex. Stade Toulousain"}
 };
 const TABS = [
   {key: "home", label: "Accueil"},
@@ -498,6 +501,106 @@ function averages(rows, minGames) {
 
 function matchText(r) {
   return `${esc(shortDay(r.day))} · ${esc(ab(r.teamShort))} ${esc(r.ts)}-${esc(r.os)} ${esc(ab(r.opp))}`;
+}
+
+// ---------- F1 ----------
+// Pilotes et écuries (ESPN, racing/f1). Structure non vérifiée sur les vraies données.
+let f1Cache = null;
+async function f1Events(from, to) {
+  const j = await getJSON(`${SCORES}racing/f1/scoreboard?dates=${ymd(from)}-${ymd(to)}`);
+  const evs = (j.events || []).map(ev => {
+    const comp = (ev.competitions || [])[0] || {};
+    const rows = (comp.competitors || []).map((c, i) => ({
+      pos: Number(c.order ?? i + 1),
+      name: c.athlete?.displayName || c.athlete?.shortName || c.team?.displayName || c.displayName || "",
+      team: c.team?.displayName || c.vehicle?.displayName || ""
+    })).sort((a, b) => a.pos - b.pos);
+    const t = ev.status?.type || {};
+    if (t.state === "in") liveNow = true;
+    return { id: ev.id, name: ev.name || "", date: new Date(ev.date), state: t.state || "", detail: t.shortDetail || t.detail || "", rows };
+  });
+  return evs.sort((a, b) => a.date - b.date);
+}
+async function f1Standings() {
+  if (f1Cache && Date.now() - f1Cache.t < STANDINGS_TTL) return f1Cache.data;
+  const j = await getJSON(`${STANDINGS}racing/f1/standings`);
+  const out = { drivers: [], teams: [] };
+  const groups = j.children || [{ name: "Pilotes", standings: j.standings }];
+  for (const g of groups) {
+    const label = String(g.name || g.abbreviation || "").toLowerCase();
+    const isTeam = /constructor|team|écurie|ecurie/.test(label);
+    const entries = (g.standings?.entries || []).map(en => {
+      const st = Object.fromEntries((en.stats || []).map(s => [s.name, s.value ?? s.displayValue]));
+      return { name: en.athlete?.displayName || en.team?.displayName || "?", pts: Number(st.points ?? st.championshipPoints ?? 0) };
+    }).sort((a, b) => b.pts - a.pts);
+    entries.forEach((en, i) => { en.pos = i + 1; });
+    if (isTeam) out.teams = entries; else out.drivers = entries;
+  }
+  f1Cache = { data: out, t: Date.now() };
+  return out;
+}
+function f1ListHTML(list) {
+  return list.map(x => `<div class="pl-row"><div class="pl-name">${x.pos}. ${esc(x.name)}</div><div class="pl-line">${esc(x.pts)} pts</div></div>`).join("");
+}
+function f1BlockHTML(title, list, favSet) {
+  const rows = list.map(x => `<li class="st${favSet.has(x.name) ? " fav" : ""}"><span class="rank">${x.pos}</span><span class="nm"><span class="tn">${esc(x.name)}</span></span><span class="meta">${esc(x.pts)} pts</span></li>`).join("");
+  return `<section class="card"><h2>${esc(title)}</h2>${list.length ? `<ul>${rows}</ul>` : '<p class="empty">Classement indisponible.</p>'}</section>`;
+}
+function f1RaceHTML(e) {
+  const when = e.date.toLocaleString("fr-FR", {weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
+  const podium = e.rows.slice(0, 3).map(r =>
+    `<div class="pl-line">${r.pos}. ${esc(r.name)}${r.team ? ` <span class="meta">${esc(r.team)}</span>` : ""}</div>`).join("");
+  return `<div class="race"><h2>${esc(e.name)}</h2><div class="meta">${esc(when)}</div>${podium}</div>`;
+}
+function f1LiveHTML(e) {
+  const rows = e.rows.map(r => `<tr><td>${r.pos}</td><td class="pn">${esc(r.name)}</td><td>${esc(r.team)}</td></tr>`).join("");
+  return `<section class="card"><h2><span class="live">EN DIRECT</span> ${esc(e.name)}</h2>${rows
+    ? `<table class="tbl"><tr><th>Pos</th><th>Pilote</th><th>Écurie</th></tr>${rows}</table>`
+    : '<p class="empty">Classement en cours de mise à jour.</p>'}</section>`;
+}
+async function f1Home() {
+  const data = await f1Standings();
+  const favSet = new Set(favs.F1 || []);
+  const favOut = [...data.drivers, ...data.teams].filter(x => favSet.has(x.name) && x.pos > 3);
+  const favHTML = favOut.length
+    ? `<section class="card"><h2>Mes favoris</h2>${f1ListHTML(favOut)}</section>` : "";
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  let next = null;
+  try { next = (await f1Events(today, addDays(today, 60))).find(e => e.state === "pre") || null; } catch (e) {}
+  const nextHTML = next
+    ? `<section class="card"><h2>Prochain Grand Prix</h2><div class="pl-name">${esc(next.name)}</div><div class="pl-line">${esc(dayTitle(next.date))} · ${esc(next.date.toLocaleTimeString("fr-FR", {hour: "2-digit", minute: "2-digit"}))}</div></section>`
+    : `<section class="card"><p class="empty">Aucun Grand Prix prévu dans les 60 prochains jours.</p></section>`;
+  return `<section class="card"><h2>Podium pilotes</h2>${f1ListHTML(data.drivers.slice(0, 3)) || '<p class="empty">Indisponible.</p>'}</section>`
+    + `<section class="card"><h2>Podium écuries</h2>${f1ListHTML(data.teams.slice(0, 3)) || '<p class="empty">Indisponible.</p>'}</section>`
+    + favHTML + nextHTML;
+}
+function f1FavsCard(data) {
+  const items = favs.F1 || [];
+  const opt = list => list.map(x => `<option value="${esc(x.name)}">${x.pos}. ${esc(x.name)}</option>`).join("");
+  const picker = `<select id="favInput"><option value="">Choisir un pilote ou une écurie…</option><optgroup label="Pilotes">${opt(data.drivers)}</optgroup><optgroup label="Écuries">${opt(data.teams)}</optgroup></select>`;
+  const rows = items.map((n, i) => `<li><span>${esc(n)}</span><button class="del" data-i="${i}" aria-label="Retirer">×</button></li>`).join("");
+  return `<section class="card"><h2>Mes pilotes et écuries</h2><form id="addForm">${picker}<button class="add" type="submit">Ajouter</button></form><ul>${rows}</ul>${items.length ? "" : '<p class="empty">Aucun favori pour le moment.</p>'}</section>`;
+}
+async function f1Tab(tab) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (tab === "home") return f1Home();
+  if (tab === "standings") {
+    const data = await f1Standings();
+    const favSet = new Set(favs.F1 || []);
+    return f1BlockHTML("Pilotes", data.drivers, favSet) + f1BlockHTML("Écuries", data.teams, favSet);
+  }
+  if (tab === "favs") return f1FavsCard(await f1Standings());
+  if (tab === "stats") return `<section class="card"><p class="empty">Les statistiques ne sont pas encore disponibles pour la F1.</p></section>`;
+  // Matchs : calendrier ou résultats (course en cours en direct en haut)
+  if (state.matchView === "results") {
+    const evs = await f1Events(seasonStart(LEAGUES.F1.startMonth), today);
+    const live = evs.filter(e => e.state === "in");
+    const past = evs.filter(e => e.state === "post").reverse();
+    return mviewNav() + live.map(f1LiveHTML).join("")
+      + `<section class="card"><h2>Résultats : saison en cours</h2>${past.length ? past.map(f1RaceHTML).join("") : '<p class="empty">Aucune course terminée.</p>'}</section>`;
+  }
+  const up = (await f1Events(today, addDays(today, 60))).filter(e => e.state !== "post");
+  return mviewNav() + `<section class="card"><h2>Prochains Grands Prix</h2>${up.length ? up.map(f1RaceHTML).join("") : '<p class="empty">Aucun Grand Prix prévu dans les 60 prochains jours.</p>'}</section>`;
 }
 
 // ---------- Accueil ----------
@@ -891,7 +994,9 @@ async function render(opts = {}) {
         RANKS = new Map(); TOP = new Set();
       }
 
-      if (state.tab === "home") {
+      if (L === "F1") {
+        html = await f1Tab(state.tab);
+      } else if (state.tab === "home") {
         html = await homeHTML();
       } else if (state.tab === "cal" && state.matchView !== "results") {
         const evs = await loadEvents(L, today, addDays(today, 7));
