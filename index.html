@@ -96,7 +96,7 @@ table.pl td.pn{padding-left:8px;font-weight:600;white-space:nowrap;overflow:hidd
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.15</div>
+<div class="ver">v1.16</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -116,6 +116,7 @@ const TABS = [
   {key: "results", label: "Résultats"},
   {key: "standings", label: "Classement"},
   {key: "mvp", label: "MVP"},
+  {key: "stats", label: "Stats"},
   {key: "favs", label: "Favoris"}
 ];
 
@@ -123,7 +124,7 @@ const REFRESH_LIVE = 60 * 1000;            // match en cours
 const REFRESH_IDLE = 3 * 60 * 60 * 1000;   // le reste
 const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 
-const state = { league: "NBA", tab: "mine", detail: null, teamFilter: "", mvpPeriod: "nuit", mvpKey: "" };
+const state = { league: "NBA", tab: "mine", detail: null, teamFilter: "", mvpPeriod: "nuit", mvpKey: "", statPeriod: "nuit", statKey: "" };
 let favs = loadFavs();
 let token = 0;
 let refreshTimer = null;
@@ -545,6 +546,53 @@ async function mvpHTML() {
   </section>`;
 }
 
+// Leaders statistiques : lus depuis data/stats.json
+async function statsHTML() {
+  let data;
+  try {
+    const r = await fetch("data/stats.json", {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    data = await r.json();
+  } catch (e) {
+    return `<section class="card"><h2>Stats</h2><p class="empty">Classements pas encore disponibles. Ils seront générés après la première mise à jour automatique.</p></section>`;
+  }
+
+  const per = state.statPeriod;
+  const buckets = { nuit: data.nights, semaine: data.weeks, mois: data.months, saison: data.season };
+  const bucket = buckets[per] || {};
+  const keys = Object.keys(bucket).sort().reverse();
+  const labelOf = k => per === "nuit" ? dayLabel(k)
+    : per === "semaine" ? "Semaine du " + dayLabel(k).toLowerCase()
+    : per === "mois" ? monthLabel(k)
+    : `Saison ${k}`;
+
+  const periodButtons = [["nuit", "Nuit"], ["semaine", "Semaine"], ["mois", "Mois"], ["saison", "Saison"]]
+    .map(([k, l]) => `<button data-stat="${k}" class="${k === per ? "on" : ""}">${l}</button>`).join("");
+  const nav = `<div class="nav">${periodButtons}</div>`;
+
+  if (!keys.length) {
+    return `${nav}<section class="card"><p class="empty">Aucune donnée pour cette période.</p></section>`;
+  }
+  if (!state.statKey || !bucket[state.statKey]) state.statKey = keys[0];
+
+  const select = `<select class="filter" id="statKey">${keys.map(k =>
+    `<option value="${esc(k)}"${k === state.statKey ? " selected" : ""}>${esc(labelOf(k))}</option>`).join("")}</select>`;
+  const minText = per === "mois" || per === "saison" ? "moyenne par match, 3 matchs minimum" : per === "semaine" ? "moyenne par match, 1 match minimum" : "match de la nuit";
+
+  const cats = (data.categories || []).map(c => {
+    const list = (bucket[state.statKey] || {})[c.key] || [];
+    const rows = list.map((p, i) =>
+      `<tr><td>${i + 1}. ${esc(p.name)}</td><td>${esc(p.team)}</td><td><b>${esc(p.value)}</b></td><td>${esc(p.games)}</td></tr>`).join("");
+    return `<section class="card"><h2>${esc(c.label)}</h2>
+      ${list.length
+        ? `<table class="pl"><tr><th>Joueur</th><th>Équipe</th><th>Valeur</th><th>Matchs</th></tr>${rows}</table>`
+        : '<p class="empty">Aucun joueur qualifié.</p>'}
+    </section>`;
+  }).join("");
+
+  return `${nav}<section class="card" style="margin-bottom:0">${select}<p class="meta">Top 5 par catégorie · ${minText}</p></section>${cats}`;
+}
+
 function renderNav() {
   document.getElementById("leagues").innerHTML = Object.keys(LEAGUES).map(l =>
     `<button data-league="${esc(l)}" class="${l === state.league ? "on" : ""}">${esc(l)}</button>`).join("");
@@ -617,6 +665,8 @@ async function render(opts = {}) {
         html = `<section class="card"><h2>Résultats : saison en cours</h2>${select}${shown.length ? shown.map(matchHTML).join("") : '<p class="empty">Aucun résultat pour cette sélection.</p>'}</section>`;
       } else if (state.tab === "mvp") {
         html = await mvpHTML();
+      } else if (state.tab === "stats") {
+        html = await statsHTML();
       } else if (state.tab === "favs") {
         let teams = [];
         try { teams = await loadTeams(L); } catch (e) { teams = []; }
@@ -640,6 +690,8 @@ appEl.addEventListener("click", e => {
   if (e.target.closest("[data-back]")) { state.detail = null; render(); return; }
   const mb = e.target.closest("button[data-mvp]");
   if (mb) { state.mvpPeriod = mb.dataset.mvp; state.mvpKey = ""; render(); return; }
+  const sb = e.target.closest("button[data-stat]");
+  if (sb) { state.statPeriod = sb.dataset.stat; state.statKey = ""; render(); return; }
   const m = e.target.closest(".match[data-id]");
   if (m) { state.detail = m.dataset.id; render(); return; }
   const d = e.target.closest(".del");
@@ -666,6 +718,9 @@ appEl.addEventListener("change", e => {
     render({silent: true});
   } else if (e.target.id === "mvpKey") {
     state.mvpKey = e.target.value;
+    render({silent: true});
+  } else if (e.target.id === "statKey") {
+    state.statKey = e.target.value;
     render({silent: true});
   }
 });

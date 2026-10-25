@@ -1,20 +1,32 @@
-// Calcule les classements MVP (Game Score de Hollinger) à partir des feuilles de match ESPN NBA.
-// Lancé chaque nuit par GitHub Actions ; écrit data/mvp.json.
+// Calcule les classements MVP (Game Score de Hollinger) et les leaders statistiques
+// à partir des feuilles de match ESPN NBA. Lancé chaque nuit par GitHub Actions ;
+// écrit data/mvp.json et data/stats.json.
 //
 // Règles :
 // - Game Score = PTS + 0,4×FGM − 0,7×FGA − 0,4×(FTA−FTM) + 0,7×OREB + 0,3×DREB + STL + 0,7×AST + 0,7×BLK − 0,4×PF − TOV
-// - Nuit : journée calendaire américaine (New York), 1 match minimum, classé par Game Score.
+// - Nuit : journée calendaire américaine (New York), 1 match minimum.
 // - Semaine : lundi → dimanche (New York), moyenne par match, 1 match minimum.
 // - Mois et saison : moyenne par match, 3 matchs minimum.
-// - Pas de minimum de minutes. Présaison exclue.
+// - Pas de minimum de minutes. Présaison exclue. Top 10 pour le MVP, top 5 pour les stats.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba";
-const OUT = "data/mvp.json";
+const OUT_MVP = "data/mvp.json";
+const OUT_STATS = "data/stats.json";
 const TZ = "America/New_York";
-const TOP_N = 10;
+const TOP_MVP = 10;
+const TOP_STATS = 5;
+
+const CATS = [
+  { key: "pts", label: "Points" },
+  { key: "reb", label: "Rebonds" },
+  { key: "ast", label: "Passes" },
+  { key: "stl", label: "Interceptions" },
+  { key: "blk", label: "Contres" },
+  { key: "tpm", label: "3 points réussis" }
+];
 
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
 const usDay = date => dayFmt.format(date); // "AAAA-MM-JJ"
@@ -73,6 +85,21 @@ function gameScore(names, stats) {
     + 0.7 * num(g("AST")) + 0.7 * num(g("BLK")) - 0.4 * num(g("PF")) - turnovers;
 }
 
+function totalsOf(names, stats) {
+  const g = k => {
+    const i = names.indexOf(k);
+    return i >= 0 ? stats[i] : undefined;
+  };
+  return {
+    pts: num(g("PTS")),
+    reb: num(g("REB")),
+    ast: num(g("AST")),
+    stl: num(g("STL")),
+    blk: num(g("BLK")),
+    tpm: made(g("3PT"))[0]
+  };
+}
+
 async function recordsOfEvent(id, dayKey) {
   const j = await getJSON(`${BASE}/summary?event=${id}`);
   const out = [];
@@ -86,28 +113,29 @@ async function recordsOfEvent(id, dayKey) {
         name: x.athlete?.displayName ?? x.athlete?.shortName ?? "",
         team: teamName,
         day: dayKey,
-        gs: gameScore(names, x.stats)
+        gs: gameScore(names, x.stats),
+        ...totalsOf(names, x.stats)
       });
     }
   }
   return out;
 }
 
-// Regroupe les matchs par clé et calcule la moyenne (ou la valeur) ; garde le top 10
-function rank(records, minGames) {
+// Regroupe les matchs par joueur et calcule la moyenne du champ demandé ; garde le top N
+function rank(records, minGames, field, topN) {
   const acc = new Map();
   for (const r of records) {
     const k = r.name + "|" + r.team;
     const e = acc.get(k) ?? { name: r.name, team: r.team, sum: 0, games: 0 };
-    e.sum += r.gs;
+    e.sum += r[field];
     e.games += 1;
     acc.set(k, e);
   }
   return [...acc.values()]
     .filter(e => e.games >= minGames)
-    .map(e => ({ name: e.name, team: e.team, gmsc: Math.round((e.sum / e.games) * 10) / 10, games: e.games }))
-    .sort((a, b) => b.gmsc - a.gmsc)
-    .slice(0, TOP_N);
+    .map(e => ({ name: e.name, team: e.team, value: Math.round((e.sum / e.games) * 10) / 10, games: e.games }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, topN);
 }
 
 function groupBy(list, keyFn) {
@@ -115,6 +143,16 @@ function groupBy(list, keyFn) {
   for (const item of list) {
     const k = keyFn(item);
     (out[k] = out[k] || []).push(item);
+  }
+  return out;
+}
+
+// Pour une période donnée : un classement par catégorie statistique
+function statsBuckets(groups, minGames) {
+  const out = {};
+  for (const [k, list] of Object.entries(groups)) {
+    out[k] = {};
+    for (const c of CATS) out[k][c.key] = rank(list, minGames, c.key, TOP_STATS);
   }
   return out;
 }
@@ -150,27 +188,38 @@ async function main() {
   const byWeek = groupBy(records, r => weekStart(r.day));
   const byMonth = groupBy(records, r => r.day.slice(0, 7));
 
-  const nights = {};
-  for (const [k, list] of Object.entries(byDay)) nights[k] = rank(list, 1);
-  const weeks = {};
-  for (const [k, list] of Object.entries(byWeek)) weeks[k] = rank(list, 1);
-  const months = {};
-  for (const [k, list] of Object.entries(byMonth)) months[k] = rank(list, 3);
-  const season = { [label]: rank(records, 3) };
+  // MVP : Game Score moyen
+  const mvpBuckets = (groups, minGames) => {
+    const out = {};
+    for (const [k, list] of Object.entries(groups)) {
+      out[k] = rank(list, minGames, "gs", TOP_MVP).map(p => ({ name: p.name, team: p.team, gmsc: p.value, games: p.games }));
+    }
+    return out;
+  };
 
-  const out = {
+  const mvp = {
     updated: now.toISOString(),
     matchs: games,
     matchs_ignores: skipped,
-    nights,
-    weeks,
-    months,
-    season
+    nights: mvpBuckets(byDay, 1),
+    weeks: mvpBuckets(byWeek, 1),
+    months: mvpBuckets(byMonth, 3),
+    season: mvpBuckets({ [label]: records }, 3)
   };
 
-  mkdirSync(dirname(OUT), { recursive: true });
-  writeFileSync(OUT, JSON.stringify(out, null, 2) + "\n");
-  console.log(`Terminé : ${games} matchs, ${skipped} ignorés, fichier ${OUT} écrit.`);
+  const stats = {
+    updated: now.toISOString(),
+    categories: CATS,
+    nights: statsBuckets(byDay, 1),
+    weeks: statsBuckets(byWeek, 1),
+    months: statsBuckets(byMonth, 3),
+    season: statsBuckets({ [label]: records }, 3)
+  };
+
+  mkdirSync(dirname(OUT_MVP), { recursive: true });
+  writeFileSync(OUT_MVP, JSON.stringify(mvp, null, 2) + "\n");
+  writeFileSync(OUT_STATS, JSON.stringify(stats, null, 2) + "\n");
+  console.log(`Terminé : ${games} matchs, ${skipped} ignorés. Fichiers ${OUT_MVP} et ${OUT_STATS} écrits.`);
 }
 
 main().catch(e => {
