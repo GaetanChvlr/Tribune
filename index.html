@@ -36,7 +36,7 @@ b{font-variant-numeric:tabular-nums}
 .ver{position:fixed;left:10px;bottom:calc(env(safe-area-inset-bottom) + 4px);font-size:11px;color:var(--muted);opacity:.7}
 
 /* Matchs : logos sur une ligne, noms (une ligne) puis rang en dessous */
-.match{padding:12px 0;border-bottom:1px solid #94a3b833;text-align:center}
+.match{padding:12px 0;border-bottom:1px solid #94a3b833;text-align:center;cursor:pointer}
 .match:last-child{border-bottom:0}
 .row{display:flex;align-items:center;justify-content:center}
 .side{width:130px;display:flex;justify-content:center;align-items:center;height:44px}
@@ -63,8 +63,23 @@ li.st.direct{background:#16a34a22;box-shadow:inset 3px 0 0 var(--direct)}
 li.st.playin{background:#f59e0b22;box-shadow:inset 3px 0 0 var(--playin)}
 .rank{width:24px;color:var(--muted);font-variant-numeric:tabular-nums}
 .nm{flex:1;display:flex;align-items:center;gap:6px;min-width:0}
-.nm span.tn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nm .tn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .logo{width:24px;height:24px;object-fit:contain;flex:none}
+
+/* Détail d'un match */
+.back{border:0;background:none;color:var(--accent);font-size:15px;padding:0;margin-bottom:8px}
+.head{display:flex;align-items:center;justify-content:center;gap:12px;text-align:center;margin:8px 0}
+.head .side{height:auto;width:auto;flex-direction:column;gap:4px}
+.head .side img{width:56px;height:56px}
+.head .score{font-size:26px;font-weight:700}
+table.qt{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+table.qt th,table.qt td{padding:8px 4px;text-align:center;border-bottom:1px solid #94a3b833}
+table.qt th{text-align:left;font-weight:600;white-space:nowrap}
+table.qt th img{width:20px;height:20px;object-fit:contain;vertical-align:middle;margin-right:6px}
+table.pl{width:100%;border-collapse:collapse;font-size:14px;margin-top:4px}
+table.pl th,table.pl td{padding:6px 4px;text-align:right;border-bottom:1px solid #94a3b833}
+table.pl th:first-child,table.pl td:first-child{text-align:left}
+table.pl th{color:var(--muted);font-weight:500;font-size:12px}
 </style>
 </head>
 <body>
@@ -77,7 +92,7 @@ li.st.playin{background:#f59e0b22;box-shadow:inset 3px 0 0 var(--playin)}
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.4</div>
+<div class="ver">v1.5</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -99,11 +114,18 @@ const TABS = [
   {key: "favs", label: "Favoris"}
 ];
 
-const state = { league: "NBA", tab: "mine" };
+const REFRESH_LIVE = 60 * 1000;            // match en cours
+const REFRESH_IDLE = 3 * 60 * 60 * 1000;   // le reste
+const STANDINGS_TTL = 3 * 60 * 60 * 1000;
+
+const state = { league: "NBA", tab: "mine", detail: null };
 let favs = loadFavs();
 let token = 0;
+let refreshTimer = null;
+let liveNow = false;
 let RANKS = new Map(); // nom d'équipe -> {seed, conf}
 let TOP = new Set();   // équipes du top 6 de leur conférence
+const openConfs = new Set(); // conférences dépliées (conservées au rafraîchissement)
 
 function loadFavs() {
   try { return JSON.parse(localStorage.getItem("tribune-favoris")) || {}; } catch (e) { return {}; }
@@ -168,13 +190,16 @@ async function loadEvents(league, from, to) {
   }
   const seen = new Set();
   const unique = raw.filter(ev => (seen.has(ev.id) ? false : seen.add(ev.id)));
-  return unique.map(parseEvent).sort((a, b) => a.date - b.date);
+  const evs = unique.map(parseEvent).sort((a, b) => a.date - b.date);
+  if (evs.some(e => e.state === "in")) liveNow = true;
+  return evs;
 }
 
-// Classement : conférences, équipes triées par rang. Mis en cache.
+// Classement : conférences, équipes triées par rang. Mis en cache 3 heures.
 let standingsCache = {};
 async function getStandings(league) {
-  if (standingsCache[league]) return standingsCache[league];
+  const c = standingsCache[league];
+  if (c && Date.now() - c.t < STANDINGS_TTL) return c.data;
   const j = await getJSON(`${STANDINGS}${LEAGUES[league].path}/standings`);
   const groups = (j.children || []).map(g => {
     const raw = (g.standings?.entries || []).map(en => {
@@ -190,7 +215,6 @@ async function getStandings(league) {
         score: Number.isFinite(wp) ? wp : (Number.isFinite(w) ? w : 0)
       };
     });
-    // Tri explicite : rang officiel si connu, sinon meilleur pourcentage de victoires
     raw.sort((a, b) => {
       if (a.ps !== null && b.ps !== null) return a.ps - b.ps;
       return b.score - a.score;
@@ -198,7 +222,7 @@ async function getStandings(league) {
     const entries = raw.map((en, i) => ({ ...en, seed: en.ps ?? i + 1 }));
     return { name: g.name || "Classement", entries };
   }).filter(g => g.entries.length);
-  standingsCache[league] = groups;
+  standingsCache[league] = { data: groups, t: Date.now() };
   return groups;
 }
 
@@ -236,11 +260,12 @@ function isFav(text, league) {
 
 function matchHTML(e) {
   const when = e.date.toLocaleString("fr-FR", {weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
+  const id = `data-id="${esc(e.id)}"`;
 
   // Événement sans deux équipes (ex. course F1) : affichage simple
   if (e.cs.length !== 2) {
     const status = e.state === "pre" ? when : (esc(e.detail) || when);
-    return `<div class="match">${esc(e.name)}<div class="meta">${status}</div></div>`;
+    return `<div class="match" ${id}>${esc(e.name)}<div class="meta">${status}</div></div>`;
   }
 
   const [a, b] = e.cs;
@@ -250,7 +275,7 @@ function matchHTML(e) {
   const status = pre ? when : (esc(e.detail) || when);
   const side = t => `<div class="side">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : ""}</div>`;
 
-  return `<div class="match">
+  return `<div class="match" ${id}>
     <div class="row">${side(a)}<div class="mid">${mid}</div>${side(b)}</div>
     <div class="row">${teamCell(a.name)}<div class="mid"></div>${teamCell(b.name)}</div>
     <div class="meta">${live}${status}</div>
@@ -310,18 +335,82 @@ async function standingsHTML(league) {
       const record = en.st.wins !== undefined ? `${esc(en.st.wins)}V ${esc(en.st.losses ?? "")}D` : "";
       return `<li class="st ${cls}"><span class="rank">${esc(en.seed)}</span><span class="nm">${logo}<span class="tn">${esc(en.name)}</span></span><span class="meta">${record}</span></li>`;
     }).join("");
-    out += `<details class="conf"><summary>${esc(g.name)}</summary><ul>${rows}</ul></details>`;
+    const open = openConfs.has(g.name) ? " open" : "";
+    out += `<details class="conf" data-conf="${esc(g.name)}"${open}><summary>${esc(g.name)}</summary><ul>${rows}</ul></details>`;
   }
   return groups.length
     ? `<section class="card">${out}</section>`
     : `<section class="card"><p class="empty">Classement indisponible pour ce championnat.</p></section>`;
 }
 
+// Détail d'un match : scores par quart-temps et meilleurs joueurs
+async function detailHTML(id, league) {
+  const j = await getJSON(`${SCORES}${LEAGUES[league].path}/summary?event=${encodeURIComponent(id)}`);
+  const comp = j.header?.competitions?.[0] || {};
+  const comps = comp.competitors || [];
+  const st = comp.status?.type || {};
+  if (st.state === "in") liveNow = true;
+
+  const logo = url => url ? `<img src="${esc(url)}" alt="">` : "";
+  const nameOf = c => c.team?.shortDisplayName || c.team?.displayName || "";
+  const periods = Math.max(4, ...comps.map(c => (c.linescores || []).length));
+  const heads = Array.from({length: periods}, (_, i) => i < 4 ? `T${i + 1}` : "Prol.");
+
+  const qtRows = comps.map(c => {
+    const ls = c.linescores || [];
+    const cells = heads.map((_, i) => {
+      const v = ls[i];
+      return `<td>${v ? esc(v.displayValue ?? v.value ?? "") : "–"}</td>`;
+    }).join("");
+    return `<tr><th>${logo(c.team?.logo)}${esc(nameOf(c))}</th>${cells}<td><b>${esc(c.score ?? "")}</b></td></tr>`;
+  }).join("");
+
+  // Meilleurs joueurs : top 3 par équipe, triés par points
+  const playerTables = (j.boxscore?.players || []).map(team => {
+    const block = team.statistics?.[0];
+    const names = block?.names || [];
+    const idx = k => names.indexOf(k);
+    const athletes = (block?.athletes || []).map(a => {
+      const s = a.stats || [];
+      return {
+        name: a.athlete?.displayName || a.athlete?.shortName || "",
+        pts: idx("PTS") >= 0 ? s[idx("PTS")] : "",
+        reb: idx("REB") >= 0 ? s[idx("REB")] : "",
+        ast: idx("AST") >= 0 ? s[idx("AST")] : ""
+      };
+    }).sort((x, y) => (parseInt(y.pts, 10) || 0) - (parseInt(x.pts, 10) || 0)).slice(0, 3);
+    if (!athletes.length) return "";
+    const rows = athletes.map(p =>
+      `<tr><td>${esc(p.name)}</td><td>${esc(p.pts)}</td><td>${esc(p.reb)}</td><td>${esc(p.ast)}</td></tr>`).join("");
+    return `<h3 class="sub-h">${esc(team.team?.shortDisplayName || team.team?.displayName || "")}</h3>
+      <table class="pl"><tr><th>Joueur</th><th>PTS</th><th>REB</th><th>AST</th></tr>${rows}</table>`;
+  }).join("");
+
+  const a = comps[0] || {}, b = comps[1] || {};
+  const head = comps.length === 2
+    ? `<div class="head">
+         <div class="side">${logo(a.team?.logo)}<span>${esc(nameOf(a))}</span></div>
+         <div class="score">${esc(a.score ?? "")} - ${esc(b.score ?? "")}</div>
+         <div class="side">${logo(b.team?.logo)}<span>${esc(nameOf(b))}</span></div>
+       </div>`
+    : `<h2>${esc(j.header?.name || "")}</h2>`;
+
+  return `<section class="card">
+    <button class="back" data-back>← Retour</button>
+    ${head}
+    <p class="meta" style="text-align:center">${st.state === "in" ? '<span class="live">EN DIRECT</span>' : ""}${esc(st.shortDetail || st.detail || "")}</p>
+    <h3 class="sub-h">Par quart-temps</h3>
+    <table class="qt"><tr><th></th>${heads.map(h => `<th>${h}</th>`).join("")}<th>Final</th></tr>${qtRows}</table>
+    <h3 class="sub-h">Meilleurs joueurs</h3>
+    ${playerTables || '<p class="empty">Statistiques joueurs indisponibles pour ce match.</p>'}
+  </section>`;
+}
+
 function renderNav() {
   document.getElementById("leagues").innerHTML = Object.keys(LEAGUES).map(l =>
     `<button data-league="${esc(l)}" class="${l === state.league ? "on" : ""}">${esc(l)}</button>`).join("");
   document.getElementById("tabs").innerHTML = TABS.map(t =>
-    `<button data-tab="${t.key}" class="${t.key === state.tab ? "on" : ""}">${esc(t.label)}</button>`).join("");
+    `<button data-tab="${t.key}" class="${!state.detail && t.key === state.tab ? "on" : ""}">${esc(t.label)}</button>`).join("");
 }
 
 function dayTitle(d) {
@@ -329,57 +418,67 @@ function dayTitle(d) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-async function render() {
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => render({silent: true}), liveNow ? REFRESH_LIVE : REFRESH_IDLE);
+}
+
+async function render(opts = {}) {
   const my = ++token;
+  liveNow = false;
   renderNav();
   const L = state.league;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const app = document.getElementById("app");
-  app.innerHTML = '<p class="empty">Chargement…</p>';
+  if (!opts.silent) app.innerHTML = '<p class="empty">Chargement…</p>';
 
   try {
-    try {
-      const r = await loadRanks(L);
-      RANKS = r.map; TOP = r.top;
-    } catch (e) {
-      RANKS = new Map(); TOP = new Set();
-    }
-
     let html = "";
-    if (state.tab === "mine") {
-      // 3 prochains jours, séparés par jour : favoris, puis grosses affiches
-      const evs = await loadEvents(L, today, addDays(today, 2));
-      const isMine = e => e.cs.some(c => isFav(c.name, L)) || isFav(e.name, L);
-      const isGrosse = e => e.cs.length === 2 && e.cs.every(c => TOP.has(c.name));
-      const days = {};
-      for (const e of evs) {
-        const k = e.date.toDateString();
-        (days[k] = days[k] || { date: e.date, evs: [] }).evs.push(e);
-      }
-      for (const k of Object.keys(days)) {
-        const { date, evs: dayEvs } = days[k];
-        const favM = dayEvs.filter(isMine);
-        const grosse = dayEvs.filter(e => !isMine(e) && isGrosse(e));
-        if (!favM.length && !grosse.length) continue;
-        html += `<section class="card"><h2>${esc(dayTitle(date))}</h2>
-          <h3 class="sub-h">Mes favoris</h3>${favM.length ? favM.map(matchHTML).join("") : '<p class="empty">Aucun match de vos favoris.</p>'}
-          <h3 class="sub-h">Grosses affiches</h3>${grosse.length ? grosse.map(matchHTML).join("") : '<p class="empty">Aucune grosse affiche.</p>'}
-        </section>`;
-      }
-      if (!html) html = `<section class="card"><p class="empty">Aucun match de vos favoris ni grosse affiche dans les 3 prochains jours.</p></section>`;
-    } else if (state.tab === "cal") {
-      const evs = await loadEvents(L, addDays(today, 1), addDays(today, 7));
-      html = listCard("Calendrier : 7 prochains jours", evs, "Rien de prévu dans les 7 prochains jours.");
-    } else if (state.tab === "results") {
-      const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, -1));
-      const played = evs.filter(e => e.state === "post").reverse();
-      html = listCard("Résultats : saison en cours", played, "Aucun résultat pour la saison en cours.");
-    } else if (state.tab === "favs") {
-      let teams = [];
-      try { teams = await loadTeams(L); } catch (e) { teams = []; }
-      html = favsCard(L, teams);
+    if (state.detail) {
+      html = await detailHTML(state.detail, L);
     } else {
-      html = await standingsHTML(L);
+      try {
+        const r = await loadRanks(L);
+        RANKS = r.map; TOP = r.top;
+      } catch (e) {
+        RANKS = new Map(); TOP = new Set();
+      }
+
+      if (state.tab === "mine") {
+        // 3 prochains jours, séparés par jour : favoris, puis grosses affiches
+        const evs = await loadEvents(L, today, addDays(today, 2));
+        const isMine = e => e.cs.some(c => isFav(c.name, L)) || isFav(e.name, L);
+        const isGrosse = e => e.cs.length === 2 && e.cs.every(c => TOP.has(c.name));
+        const days = {};
+        for (const e of evs) {
+          const k = e.date.toDateString();
+          (days[k] = days[k] || { date: e.date, evs: [] }).evs.push(e);
+        }
+        for (const k of Object.keys(days)) {
+          const { date, evs: dayEvs } = days[k];
+          const favM = dayEvs.filter(isMine);
+          const grosse = dayEvs.filter(e => !isMine(e) && isGrosse(e));
+          if (!favM.length && !grosse.length) continue;
+          html += `<section class="card"><h2>${esc(dayTitle(date))}</h2>
+            <h3 class="sub-h">Mes favoris</h3>${favM.length ? favM.map(matchHTML).join("") : '<p class="empty">Aucun match de vos favoris.</p>'}
+            <h3 class="sub-h">Grosses affiches</h3>${grosse.length ? grosse.map(matchHTML).join("") : '<p class="empty">Aucune grosse affiche.</p>'}
+          </section>`;
+        }
+        if (!html) html = `<section class="card"><p class="empty">Aucun match de vos favoris ni grosse affiche dans les 3 prochains jours.</p></section>`;
+      } else if (state.tab === "cal") {
+        const evs = await loadEvents(L, today, addDays(today, 7));
+        html = listCard("Calendrier : 7 prochains jours", evs, "Rien de prévu dans les 7 prochains jours.");
+      } else if (state.tab === "results") {
+        const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, -1));
+        const played = evs.filter(e => e.state === "post").reverse();
+        html = listCard("Résultats : saison en cours", played, "Aucun résultat pour la saison en cours.");
+      } else if (state.tab === "favs") {
+        let teams = [];
+        try { teams = await loadTeams(L); } catch (e) { teams = []; }
+        html = favsCard(L, teams);
+      } else {
+        html = await standingsHTML(L);
+      }
     }
     if (my !== token) return;
     app.innerHTML = html;
@@ -387,35 +486,48 @@ async function render() {
     if (my !== token) return;
     app.innerHTML = `<section class="card"><p class="empty">Données indisponibles pour ${esc(L)} : ${esc(err.message)}. La source peut être momentanément inaccessible. Réessayez plus tard.</p></section>`;
   }
-  attachHandlers();
+  if (my === token) scheduleRefresh();
 }
 
-function attachHandlers() {
-  const form = document.getElementById("addForm");
-  if (form) form.addEventListener("submit", e => {
-    e.preventDefault();
-    const input = document.getElementById("favInput");
-    const v = (input.value || "").trim();
-    if (!v) return;
-    favs[state.league] = favs[state.league] || [];
-    if (!favs[state.league].includes(v)) favs[state.league].push(v);
+// Gestion des clics et formulaires : écouteurs posés une seule fois
+const appEl = document.getElementById("app");
+appEl.addEventListener("click", e => {
+  if (e.target.closest("[data-back]")) { state.detail = null; render(); return; }
+  const m = e.target.closest(".match[data-id]");
+  if (m) { state.detail = m.dataset.id; render(); return; }
+  const d = e.target.closest(".del");
+  if (d) {
+    favs[state.league].splice(+d.dataset.i, 1);
     saveFavs();
     render();
-  });
-  document.querySelectorAll("#app .del").forEach(btn => btn.addEventListener("click", () => {
-    favs[state.league].splice(+btn.dataset.i, 1);
-    saveFavs();
-    render();
-  }));
-}
+  }
+});
+appEl.addEventListener("submit", e => {
+  if (e.target.id !== "addForm") return;
+  e.preventDefault();
+  const input = document.getElementById("favInput");
+  const v = (input.value || "").trim();
+  if (!v) return;
+  favs[state.league] = favs[state.league] || [];
+  if (!favs[state.league].includes(v)) favs[state.league].push(v);
+  saveFavs();
+  render();
+});
+// Mémorise les conférences dépliées pour les garder après un rafraîchissement
+appEl.addEventListener("toggle", e => {
+  const d = e.target;
+  if (!d.matches || !d.matches("details.conf")) return;
+  const name = d.dataset.conf;
+  if (d.open) openConfs.add(name); else openConfs.delete(name);
+}, true);
 
 document.getElementById("leagues").addEventListener("click", e => {
   const b = e.target.closest("button[data-league]");
-  if (b) { state.league = b.dataset.league; render(); }
+  if (b) { state.league = b.dataset.league; state.detail = null; render(); }
 });
 document.getElementById("tabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-tab]");
-  if (b) { state.tab = b.dataset.tab; render(); }
+  if (b) { state.tab = b.dataset.tab; state.detail = null; render(); }
 });
 
 render();
