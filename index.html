@@ -47,6 +47,8 @@ b{font-variant-numeric:tabular-nums}
 .nm2.win .tn{color:var(--text);font-weight:700}
 .mid{min-width:72px;padding:0 6px;font-size:14px;white-space:nowrap}
 .mid b{font-size:17px}
+.mid .sc{font-size:17px;font-weight:400}
+.mid .sc.w{font-weight:800}
 
 /* Classement */
 .legend{font-size:12px;color:var(--muted);margin:6px 0 0}
@@ -93,7 +95,7 @@ table.pl td.pn{padding-left:8px;font-weight:600;white-space:nowrap;overflow:hidd
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.12</div>
+<div class="ver">v1.13</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -285,14 +287,19 @@ function matchHTML(e) {
 
   const [a, b] = e.cs;
   const pre = e.state === "pre";
-  const mid = pre ? "vs" : `<b>${esc(a.score)} - ${esc(b.score)}</b>`;
+  const aN = Number(a.score), bN = Number(b.score);
+  const finished = e.state === "post" && Number.isFinite(aN) && Number.isFinite(bN);
+  // Match terminé : le gagnant est en gras. Match en cours : les deux scores sont en gras.
+  const aW = finished ? aN > bN : e.state === "in";
+  const bW = finished ? bN > aN : e.state === "in";
+  const mid = pre ? "vs" : `<span class="sc${aW ? " w" : ""}">${esc(a.score)}</span> - <span class="sc${bW ? " w" : ""}">${esc(b.score)}</span>`;
   const live = e.state === "in" ? '<span class="live">EN DIRECT</span>' : "";
   const status = pre ? when : (esc(e.detail) || when);
   const side = t => `<div class="side">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : ""}</div>`;
 
   return `<div class="match" ${id}>
     <div class="row">${side(a)}<div class="mid">${mid}</div>${side(b)}</div>
-    <div class="row">${teamCell(a.name)}<div class="mid"></div>${teamCell(b.name)}</div>
+    <div class="row">${teamCell(a.name, aW && finished)}<div class="mid"></div>${teamCell(b.name, bW && finished)}</div>
     <div class="meta">${live}${status}</div>
   </div>`;
 }
