@@ -150,6 +150,7 @@ table.ev td.evl{text-align:right}
 table.ev td.evr{text-align:left}
 table.ftbl td.pn{max-width:150px}
 table.ftbl th:nth-child(n+3),table.ftbl td:nth-child(n+3){text-align:center}
+.gros{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--accent);color:var(--on-accent);margin-right:6px}
 </style>
 </head>
 <body>
@@ -162,7 +163,7 @@ table.ftbl th:nth-child(n+3),table.ftbl td:nth-child(n+3){text-align:center}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.54</div>
+<div class="ver">v1.55</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -204,7 +205,7 @@ const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 const state = {
   league: "NBA", tab: "home", detail: null, teamFilter: "",
   screen: "landing", homePeriod: "saison", calTeamFilter: "", matchView: "cal", raceId: null,
-  statsView: "leaders", statsPeriod: "nuit", statsKey: ""
+  statsView: "leaders", statsPeriod: "nuit", statsKey: "", calWeek: null, resWeek: null
 };
 let favs = loadFavs();           // équipes par championnat
 let players = loadPlayers();     // joueurs favoris
@@ -278,6 +279,31 @@ function rememberTeam(t) {
     TEAM_PAIR[t.displayName] = { p: t.color, s: HEX.test(String(t.alternateColor || "")) ? t.alternateColor : t.color };
   }
 }
+// Couleurs des clubs français (principale, secondaire), reconnues dans le nom ESPN
+const FOOT_COLORS = [
+  ["paris saint", "004170", "DA291C"], ["marseille", "2FAEE0", "FFFFFF"], ["lyon", "FFFFFF", "DA291C"],
+  ["monaco", "E2001A", "FFFFFF"], ["lille", "E30613", "1B2A6B"], ["lens", "F5C400", "E30613"],
+  ["rennais", "E4002B", "000000"], ["nice", "E4002B", "000000"], ["strasbourg", "1F5FA8", "FFFFFF"],
+  ["toulouse", "5B2D8C", "FFFFFF"], ["nantes", "FFD100", "00843D"], ["brest", "E30613", "FFFFFF"],
+  ["havre", "00A3E0", "0B2D5C"], ["metz", "7A1B3A", "C0C0C0"], ["auxerre", "1F3F8C", "FFFFFF"],
+  ["angers", "000000", "FFFFFF"], ["lorient", "F26B21", "FFFFFF"], ["paris fc", "003C7E", "E30613"]
+];
+const FOOT_PAIR = {};   // nom d'équipe -> {p, s}, après attribution sans doublon
+// Chaque duo (ordre principale/secondaire) n'est donné qu'à une équipe ; en cas de doublon, on inverse
+function setFootColors(names) {
+  const used = new Set();
+  const key = c => `${c.p}|${c.s}`;
+  for (const n of [...new Set(names.filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"))) {
+    const hit = FOOT_COLORS.find(([s]) => n.toLowerCase().includes(s));
+    const base = hit ? { p: hit[1], s: hit[2] } : TEAM_PAIR[n];
+    if (!base) continue;
+    const pair = used.has(key(base)) ? { p: base.s, s: base.p } : base;
+    FOOT_PAIR[n] = pair;
+    used.add(key(pair));
+  }
+}
+function footPair(name) { return FOOT_PAIR[name] || TEAM_PAIR[name] || null; }
+
 // Pastille aux couleurs de l'équipe du joueur (principale en haut, secondaire en bas)
 const HEX = /^[0-9a-f]{6}$/i;
 function pdot(c, a) {
@@ -396,13 +422,19 @@ function confLetter(name) {
 }
 
 async function loadRanks(league) {
-  if (isFoot(league)) return { map: new Map(), top: new Set() };
+  const foot = isFoot(league);
   const map = new Map();
   const top = new Set();
-  for (const g of await getStandings(league)) {
+  const groups = await getStandings(league);
+  if (foot) {
+    const names = groups.flatMap(g => g.entries.map(en => en.name));
+    try { names.push(...await loadTeams(league)); } catch (e) {}
+    setFootColors(names);
+  }
+  for (const g of groups) {
     const conf = confLetter(g.name);
     for (const en of g.entries) {
-      map.set(en.name, { seed: en.seed, conf });
+      if (!foot) map.set(en.name, { seed: en.seed, conf });
       if (en.seed <= 6) top.add(en.name);
     }
   }
@@ -413,7 +445,7 @@ async function loadRanks(league) {
 function teamCell(name, win = false, style = "", abbr = false) {
   const r = RANKS.get(name);
   const rank = r ? `(${r.seed}${r.seed === 1 ? "er" : "e"}${r.conf ? " " + r.conf : ""})` : "";
-  return `<div class="nm2${win ? " win" : ""}"><div class="tn"${style ? ` style="${style}"` : ""}>${isFoot(state.league) && TEAM_PAIR[name] ? pdot(TEAM_PAIR[name].p, TEAM_PAIR[name].s) : ""}${esc(abbr ? ab(name) : name)}</div>${rank ? `<div class="rk">${esc(rank)}</div>` : ""}</div>`;
+  return `<div class="nm2${win ? " win" : ""}"><div class="tn"${style ? ` style="${style}"` : ""}>${isFoot(state.league) && footPair(name) ? pdot(footPair(name).p, footPair(name).s) : ""}${esc(abbr ? ab(name) : name)}</div>${rank ? `<div class="rk">${esc(rank)}</div>` : ""}</div>`;
 }
 
 function isFav(text, league) {
@@ -421,7 +453,7 @@ function isFav(text, league) {
   return (favs[league] || []).some(f => t.includes(f.toLowerCase()));
 }
 
-function matchHTML(e, abbr = false) {
+function matchHTML(e, abbr = false, big = false) {
   const when = e.date.toLocaleString("fr-FR", {weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
   const id = `data-id="${esc(e.id)}"`;
 
@@ -444,23 +476,41 @@ function matchHTML(e, abbr = false) {
   return `<div class="match" ${id}>
     <div class="row">${side(a)}<div class="mid">${mid}</div>${side(b)}</div>
     <div class="row">${teamCell(a.name, aW && finished, "", abbr)}<div class="mid"></div>${teamCell(b.name, bW && finished, "", abbr)}</div>
-    <div class="meta">${live}${status}</div>
+    <div class="meta">${live}${big ? '<span class="gros">Grosse affiche</span>' : ""}${status}</div>
   </div>`;
 }
 
-// Football : matchs regroupés par journée (ESPN : week.number)
-function byMatchday(evs, desc) {
-  const groups = new Map();
-  for (const e of evs) {
-    const k = e.wk ?? 0;
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(e);
-  }
-  const keys = [...groups.keys()].sort((a, b) => desc ? b - a : a - b);
-  return keys.map(k => ({ title: k ? `Journée ${k}` : "Autres matchs", evs: groups.get(k) }));
-}
-function matchdayHTML(groups) {
-  return groups.map(g => `<h3 class="sub-h">${esc(g.title)}</h3>${g.evs.map(e => matchHTML(e)).join("")}`).join("");
+// Football : calendrier et résultats par journée (ESPN : week.number), avec filtre de journée.
+// Par défaut : calendrier = journée en cours (première journée non terminée), résultats = journée précédente.
+async function footCalHTML(L, today) {
+  const isRes = state.matchView === "results";
+  const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, 60));
+  const season = evs.filter(e => e.stype !== 1 && e.wk);
+  const weeks = [...new Set(season.map(e => e.wk))].sort((a, b) => a - b);
+  const pending = season.filter(e => e.state !== "post").map(e => e.wk);
+  const current = pending.length ? Math.min(...pending) : (weeks.at(-1) ?? 1);
+  const before = weeks.filter(w => w < current);
+  const prev = before.length ? before.at(-1) : current;
+  const wanted = isRes ? state.resWeek : state.calWeek;
+  const sel = weeks.includes(wanted) ? wanted : (isRes ? prev : current);
+  const isBig = e => e.cs.length === 2 && e.cs.every(c => TOP.has(c.name));
+
+  let teams = [];
+  try { teams = await loadTeams(L); } catch (e) { teams = []; }
+  const tf = isRes ? state.teamFilter : state.calTeamFilter;
+  let list = season.filter(e => e.wk === sel && (!tf || e.cs.some(c => c.name === tf)));
+  if (isRes) list = list.filter(e => e.state === "post");
+  list.sort((a, b) => isRes ? b.date - a.date : a.date - b.date);
+
+  const wkSel = `<select class="filter" id="mdFilter">${weeks.map(w =>
+    `<option value="${w}"${w === sel ? " selected" : ""}>Journée ${w}${w === current ? " (en cours)" : ""}</option>`).join("")}</select>`;
+  const teamSel = `<select class="filter" id="${isRes ? "teamFilter" : "calTeamFilter"}"><option value="">Toutes les équipes</option>${teams.map(t =>
+    `<option value="${esc(t)}"${t === tf ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
+  const cards = list.length
+    ? list.map(e => matchHTML(e, false, sel === current && isBig(e))).join("")
+    : `<p class="empty">${isRes ? "Aucun résultat pour cette sélection." : "Aucun match prévu pour cette sélection."}</p>`;
+  const title = isRes ? `Résultats : journée ${sel}` : `Calendrier : journée ${sel}`;
+  return `${mviewNav()}<section class="card"><h2>${title}</h2>${wkSel}${teamSel}${cards}</section>`;
 }
 
 function listCard(title, evs, emptyMsg) {
@@ -1039,7 +1089,7 @@ async function footStandingsHTML(league) {
   return groups.map(g => {
     const rows = g.entries.map(en => {
       const s = en.st;
-      const p = TEAM_PAIR[en.name];
+      const p = footPair(en.name);
       const dot = p ? pdot(p.p, p.s) : "";
       const logo = en.logo ? `<img class="logo" src="${esc(en.logo)}" alt="">` : "";
       return `<tr><td>${esc(en.seed)}</td><td class="pn">${dot}${logo}${esc(en.name)}</td><td>${esc(s.wins ?? "–")}</td><td>${esc(s.ties ?? s.draws ?? "–")}</td><td>${esc(s.losses ?? "–")}</td><td>${esc(s.pointDifferential ?? "–")}</td><td><b>${esc(s.points ?? "–")}</b></td></tr>`;
@@ -1079,7 +1129,8 @@ function brightness(hex) {
 // Couleur du texte : la couleur de l'équipe, sauf si elle est trop sombre pour le mode nuit
 function textColor(hex) {
   if (!hex) return "";
-  return brightness(hex) < 0.3 ? "var(--text)" : `#${hex.replace("#", "")}`;
+  const b = brightness(hex);
+  return b < 0.3 || b > 0.9 ? "var(--text)" : `#${hex.replace("#", "")}`;
 }
 
 // Détail d'un match : score, quart-temps, tous les joueurs
@@ -1095,7 +1146,7 @@ async function footDetailHTML(id, league) {
 
   const [a = {}, b = {}] = comps;
   const name = c => c.team?.displayName || "";
-  const style = c => { const p = TEAM_PAIR[name(c)]; return p ? `color:${textColor(p.p)}` : ""; };
+  const style = c => { const p = footPair(name(c)); return p ? `color:${textColor(p.p)}` : ""; };
   const logo = c => { const l = logoOf(c.team); return l ? `<img src="${esc(l)}" alt="">` : ""; };
   const aWin = Number(a.score) > Number(b.score), bWin = Number(b.score) > Number(a.score);
   const head = `<div class="row"><div class="side">${logo(a)}</div><div class="mid"><b class="big">${esc(a.score ?? "")} - ${esc(b.score ?? "")}</b></div><div class="side">${logo(b)}</div></div>
@@ -1301,15 +1352,16 @@ async function render(opts = {}) {
         html = await f1Tab(state.tab);
       } else if (state.tab === "home") {
         html = await homeHTML();
+      } else if (state.tab === "cal" && isFoot(L)) {
+        html = await footCalHTML(L, today);
       } else if (state.tab === "cal" && state.matchView !== "results") {
-        const foot = isFoot(L);
-        const evs = await loadEvents(L, today, addDays(today, foot ? 60 : 7));
+        const evs = await loadEvents(L, today, addDays(today, 7));
         let teams = [];
         try { teams = await loadTeams(L); } catch (e) { teams = []; }
         const shown = evs.filter(e => !state.calTeamFilter || e.cs.some(c => c.name === state.calTeamFilter));
         const select = `<select class="filter" id="calTeamFilter"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}"${t === state.calTeamFilter ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
-        const body = foot ? matchdayHTML(byMatchday(shown, false)) : shown.map(e => matchHTML(e)).join("");
-        html = `${mviewNav()}<section class="card"><h2>${foot ? "Calendrier : prochaines journées" : "Calendrier : 7 prochains jours"}</h2>${select}${shown.length ? body : '<p class="empty">Aucun match prévu pour cette sélection.</p>'}</section>`;
+        const body = shown.map(e => matchHTML(e)).join("");
+        html = `${mviewNav()}<section class="card"><h2>Calendrier : 7 prochains jours</h2>${select}${shown.length ? body : '<p class="empty">Aucun match prévu pour cette sélection.</p>'}</section>`;
       } else if (state.tab === "cal") {
         const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, -1));
         const played = evs.filter(e => e.state === "post" && e.stype !== 1).reverse();
@@ -1317,7 +1369,7 @@ async function render(opts = {}) {
         try { teams = await loadTeams(L); } catch (e) { teams = []; }
         const shown = played.filter(e => !state.teamFilter || e.cs.some(c => c.name === state.teamFilter));
         const select = `<select class="filter" id="teamFilter"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}"${t === state.teamFilter ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
-        const body = isFoot(L) ? matchdayHTML(byMatchday(shown, true)) : shown.map(e => matchHTML(e)).join("");
+        const body = shown.map(e => matchHTML(e)).join("");
         html = `${mviewNav()}<section class="card"><h2>Résultats : saison en cours</h2>${select}${shown.length ? body : '<p class="empty">Aucun résultat pour cette sélection.</p>'}</section>`;
       } else if (state.tab === "standings") {
         html = await standingsHTML(L);
@@ -1352,7 +1404,7 @@ appEl.addEventListener("click", e => {
     state.league = pick.dataset.pick;
     state.screen = "app";
     state.tab = "home";
-    state.detail = null; state.raceId = null; state.teamFilter = ""; state.calTeamFilter = "";
+    state.detail = null; state.raceId = null; state.teamFilter = ""; state.calTeamFilter = ""; state.calWeek = null; state.resWeek = null;
     render();
     return;
   }
@@ -1408,6 +1460,9 @@ appEl.addEventListener("change", e => {
     render({silent: true});
   } else if (e.target.id === "calTeamFilter") {
     state.calTeamFilter = e.target.value;
+    render({silent: true});
+  } else if (e.target.id === "mdFilter") {
+    if (state.matchView === "results") state.resWeek = +e.target.value; else state.calWeek = +e.target.value;
     render({silent: true});
   } else if (e.target.id === "statsKey") {
     state.statsKey = e.target.value;
