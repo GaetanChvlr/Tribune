@@ -82,7 +82,8 @@ table.pl{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
 table.pl th,table.pl td{padding:6px 3px;text-align:right;border-bottom:1px solid #94a3b833;font-variant-numeric:tabular-nums}
 table.pl th:first-child,table.pl td:first-child{text-align:left}
 table.pl th{color:var(--muted);font-weight:500;font-size:11px}
-table.pl td.pn{padding-left:8px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+table.pl td.pn{padding-left:8px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px}
+.bar{display:inline-block;width:4px;height:14px;border-radius:2px;margin-right:6px;vertical-align:middle}
 </style>
 </head>
 <body>
@@ -95,7 +96,7 @@ table.pl td.pn{padding-left:8px;font-weight:600;white-space:nowrap;overflow:hidd
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.13</div>
+<div class="ver">v1.14</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -388,14 +389,17 @@ async function detailHTML(id, league) {
   if (st.state === "in") liveNow = true;
 
   // Couleurs par équipe : depuis l'en-tête, puis depuis la feuille de match
-  const colorByName = {};
-  for (const t of (j.boxscore?.teams || [])) {
-    if (t.team?.displayName && t.team?.color) colorByName[t.team.displayName] = t.team.color;
-  }
-  for (const c of comps) {
-    if (c.team?.displayName && c.team?.color) colorByName[c.team.displayName] = c.team.color;
-  }
-  const colorOf = team => colorByName[team?.displayName] || team?.color || "";
+  // Deux couleurs par équipe : principale (haut de la barre) et secondaire (bas)
+  const pairByName = {};
+  const remember = team => {
+    if (team?.displayName && team?.color) {
+      pairByName[team.displayName] = { p: team.color, s: team.alternateColor || team.color };
+    }
+  };
+  for (const t of (j.boxscore?.teams || [])) remember(t.team);
+  for (const c of comps) remember(c.team);
+  const pairOf = team => pairByName[team?.displayName] || { p: team?.color || "", s: team?.alternateColor || team?.color || "" };
+  const colorOf = team => pairOf(team).p;
 
   const [a = {}, b = {}] = comps;
   const logo = c => {
@@ -449,12 +453,12 @@ async function detailHTML(id, league) {
   for (const team of (j.boxscore?.players || [])) {
     const block = team.statistics?.[0];
     const names = block?.names || [];
-    const color = colorOf(team.team);
+    const pair = pairOf(team.team);
     for (const x of (block?.athletes || [])) {
       if (!(x.stats || []).length) continue;
       const stats = x.stats;
       const get = k => { const i = names.indexOf(k); return i >= 0 ? (stats[i] ?? "") : ""; };
-      players.push({ name: x.athlete?.displayName || x.athlete?.shortName || "", color, get });
+      players.push({ name: x.athlete?.displayName || x.athlete?.shortName || "", color: pair.p, alt: pair.s, get });
     }
   }
   const num = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : -Infinity; };
@@ -466,11 +470,13 @@ async function detailHTML(id, league) {
     return 0;
   });
   const playerRows = players.map(p => {
-    const nameStyle = p.color
-      ? `border-left:4px solid #${p.color.replace("#", "")};padding-left:6px;color:${textColor(p.color)}`
+    const hex = c => String(c).replace("#", "");
+    const bar = p.color
+      ? `<span class="bar" style="background:linear-gradient(#${hex(p.color)} 50%,#${hex(p.alt || p.color)} 50%)"></span>`
       : "";
+    const nameColor = p.color ? `color:${textColor(p.color)}` : "";
     const cells = cols.map(([k]) => `<td>${esc(p.get(k))}</td>`).join("");
-    return `<tr><td class="pn" style="${nameStyle}">${esc(p.name)}</td>${cells}</tr>`;
+    return `<tr><td class="pn" style="${nameColor}">${bar}${esc(p.name)}</td>${cells}</tr>`;
   }).join("");
   const playersHTML = players.length
     ? `<table class="pl"><tr><th>Joueur</th>${cols.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr>${playerRows}</table>`
