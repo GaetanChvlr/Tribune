@@ -144,6 +144,12 @@ table.qt th img{width:20px;height:20px;object-fit:contain;vertical-align:middle;
 .ltile .lfb{display:none;align-items:center;justify-content:center;border-radius:12px;font-size:13px;text-align:center;padding:4px;box-sizing:border-box}
 .ltile.soon{opacity:.6}
 body{padding-top:max(56px,calc(env(safe-area-inset-top) + 16px))!important}
+table.ev td{padding:8px 4px;border-bottom:1px solid #94a3b833;font-size:14px}
+table.ev td.evm{width:48px;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}
+table.ev td.evl{text-align:right}
+table.ev td.evr{text-align:left}
+table.ftbl td.pn{max-width:150px}
+table.ftbl th:nth-child(n+3),table.ftbl td:nth-child(n+3){text-align:center}
 </style>
 </head>
 <body>
@@ -156,7 +162,7 @@ body{padding-top:max(56px,calc(env(safe-area-inset-top) + 16px))!important}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.53</div>
+<div class="ver">v1.54</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -233,6 +239,7 @@ let liveNow = false;
 let RANKS = new Map(); // nom d'équipe -> {seed, conf}
 let TOP = new Set();   // équipes du top 6 de leur conférence
 const TEAM_LOGOS = {}; // nom d'équipe -> URL du logo
+const TEAM_PAIR = {};  // nom d'équipe -> {p, s} : couleur principale et secondaire (ESPN)
 const openConfs = new Set();
 let GAMES = null;      // données joueurs (data/games.json), chargées une fois
 let GAMES_ERR = null;
@@ -262,6 +269,14 @@ function ab(n) {
   if (ABBR[s]) return ABBR[s];
   const last = Object.keys(ABBR).find(k => s.endsWith(k));
   return last ? ABBR[last] : s;
+}
+// Football : championnats français (chemin ESPN « soccer/… »)
+const isFoot = L => String(LEAGUES[L]?.path || "").startsWith("soccer/");
+// Mémorise les couleurs d'une équipe (ESPN) pour les pastilles et le texte
+function rememberTeam(t) {
+  if (t?.displayName && HEX.test(String(t.color || ""))) {
+    TEAM_PAIR[t.displayName] = { p: t.color, s: HEX.test(String(t.alternateColor || "")) ? t.alternateColor : t.color };
+  }
 }
 // Pastille aux couleurs de l'équipe du joueur (principale en haut, secondaire en bas)
 const HEX = /^[0-9a-f]{6}$/i;
@@ -295,6 +310,7 @@ function parseEvent(ev) {
   const cs = (comp.competitors || []).map(c => {
     const logo = logoOf(c.team);
     if (c.team?.displayName && logo) TEAM_LOGOS[c.team.displayName] = logo;
+    rememberTeam(c.team);
     return {
       name: c.team?.displayName || c.athlete?.displayName || c.displayName || "",
       score: c.score ?? "",
@@ -309,7 +325,8 @@ function parseEvent(ev) {
     cs,
     state: t.state || "",
     detail: t.shortDetail || t.detail || "",
-    stype: ev.season?.type ?? null
+    stype: ev.season?.type ?? null,
+    wk: ev.week?.number ?? null
   };
 }
 
@@ -347,6 +364,7 @@ async function getStandings(league) {
   const groups = (j.children || []).map(g => {
     const raw = (g.standings?.entries || []).map(en => {
       const st = Object.fromEntries((en.stats || []).map(s => [s.name, s.displayValue]));
+      rememberTeam(en.team);
       const ps = parseInt(st.playoffSeed ?? st.rank, 10);
       const wp = parseFloat(st.winPercent ?? st.winPct ?? "");
       const w = parseFloat(st.wins ?? "");
@@ -378,6 +396,7 @@ function confLetter(name) {
 }
 
 async function loadRanks(league) {
+  if (isFoot(league)) return { map: new Map(), top: new Set() };
   const map = new Map();
   const top = new Set();
   for (const g of await getStandings(league)) {
@@ -394,7 +413,7 @@ async function loadRanks(league) {
 function teamCell(name, win = false, style = "", abbr = false) {
   const r = RANKS.get(name);
   const rank = r ? `(${r.seed}${r.seed === 1 ? "er" : "e"}${r.conf ? " " + r.conf : ""})` : "";
-  return `<div class="nm2${win ? " win" : ""}"><div class="tn"${style ? ` style="${style}"` : ""}>${esc(abbr ? ab(name) : name)}</div>${rank ? `<div class="rk">${esc(rank)}</div>` : ""}</div>`;
+  return `<div class="nm2${win ? " win" : ""}"><div class="tn"${style ? ` style="${style}"` : ""}>${isFoot(state.league) && TEAM_PAIR[name] ? pdot(TEAM_PAIR[name].p, TEAM_PAIR[name].s) : ""}${esc(abbr ? ab(name) : name)}</div>${rank ? `<div class="rk">${esc(rank)}</div>` : ""}</div>`;
 }
 
 function isFav(text, league) {
@@ -427,6 +446,21 @@ function matchHTML(e, abbr = false) {
     <div class="row">${teamCell(a.name, aW && finished, "", abbr)}<div class="mid"></div>${teamCell(b.name, bW && finished, "", abbr)}</div>
     <div class="meta">${live}${status}</div>
   </div>`;
+}
+
+// Football : matchs regroupés par journée (ESPN : week.number)
+function byMatchday(evs, desc) {
+  const groups = new Map();
+  for (const e of evs) {
+    const k = e.wk ?? 0;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(e);
+  }
+  const keys = [...groups.keys()].sort((a, b) => desc ? b - a : a - b);
+  return keys.map(k => ({ title: k ? `Journée ${k}` : "Autres matchs", evs: groups.get(k) }));
+}
+function matchdayHTML(groups) {
+  return groups.map(g => `<h3 class="sub-h">${esc(g.title)}</h3>${g.evs.map(e => matchHTML(e)).join("")}`).join("");
 }
 
 function listCard(title, evs, emptyMsg) {
@@ -464,7 +498,9 @@ async function loadTeams(league) {
   let names = [];
   try {
     const j = await getJSON(`${SCORES}${LEAGUES[league].path}/teams`);
-    names = (j.sports?.[0]?.leagues?.[0]?.teams || []).map(t => t.team?.displayName);
+    const list0 = j.sports?.[0]?.leagues?.[0]?.teams || [];
+    list0.forEach(t => rememberTeam(t.team));
+    names = list0.map(t => t.team?.displayName);
   } catch (e) {}
   if (!names.filter(Boolean).length) {
     for (const g of await getStandings(league)) for (const en of g.entries) names.push(en.name);
@@ -995,7 +1031,25 @@ async function playersCard() {
   </section>`;
 }
 
+// Football : V / N / D, différence de buts, points
+async function footStandingsHTML(league) {
+  await loadTeams(league).catch(() => {});
+  const groups = await getStandings(league);
+  if (!groups.length) return '<section class="card"><p class="empty">Classement indisponible pour ce championnat.</p></section>';
+  return groups.map(g => {
+    const rows = g.entries.map(en => {
+      const s = en.st;
+      const p = TEAM_PAIR[en.name];
+      const dot = p ? pdot(p.p, p.s) : "";
+      const logo = en.logo ? `<img class="logo" src="${esc(en.logo)}" alt="">` : "";
+      return `<tr><td>${esc(en.seed)}</td><td class="pn">${dot}${logo}${esc(en.name)}</td><td>${esc(s.wins ?? "–")}</td><td>${esc(s.ties ?? s.draws ?? "–")}</td><td>${esc(s.losses ?? "–")}</td><td>${esc(s.pointDifferential ?? "–")}</td><td><b>${esc(s.points ?? "–")}</b></td></tr>`;
+    }).join("");
+    return `<section class="card"><h2>${esc(g.name)}</h2><table class="tbl ftbl"><tr><th>#</th><th>Équipe</th><th>V</th><th>N</th><th>D</th><th>Diff</th><th>Pts</th></tr>${rows}</table></section>`;
+  }).join("");
+}
+
 async function standingsHTML(league) {
+  if (isFoot(league)) return footStandingsHTML(league);
   const groups = await getStandings(league);
   const legend = `<p class="legend"><span class="dot direct"></span>Playoffs directs (1 à 6)<span class="dot playin"></span>Play-in (7 à 10)</p>`;
   let out = legend;
@@ -1029,7 +1083,48 @@ function textColor(hex) {
 }
 
 // Détail d'un match : score, quart-temps, tous les joueurs
+// Football : score, puis buts et cartons avec la minute
+async function footDetailHTML(id, league) {
+  const j = await getJSON(`${SCORES}${LEAGUES[league].path}/summary?event=${encodeURIComponent(id)}`);
+  const comp = j.header?.competitions?.[0] || {};
+  const comps = comp.competitors || [];
+  const st = comp.status?.type || {};
+  if (st.state === "in") liveNow = true;
+  comps.forEach(c => rememberTeam(c.team));
+  (j.boxscore?.teams || []).forEach(t => rememberTeam(t.team));
+
+  const [a = {}, b = {}] = comps;
+  const name = c => c.team?.displayName || "";
+  const style = c => { const p = TEAM_PAIR[name(c)]; return p ? `color:${textColor(p.p)}` : ""; };
+  const logo = c => { const l = logoOf(c.team); return l ? `<img src="${esc(l)}" alt="">` : ""; };
+  const aWin = Number(a.score) > Number(b.score), bWin = Number(b.score) > Number(a.score);
+  const head = `<div class="row"><div class="side">${logo(a)}</div><div class="mid"><b class="big">${esc(a.score ?? "")} - ${esc(b.score ?? "")}</b></div><div class="side">${logo(b)}</div></div>
+    <div class="row">${teamCell(name(a), aWin, style(a))}<div class="mid"></div>${teamCell(name(b), bWin, style(b))}</div>`;
+
+  const side = k => comps.findIndex(c =>
+    (k.team?.id && String(c.team?.id) === String(k.team.id)) || (k.team?.displayName && c.team?.displayName === k.team.displayName));
+  const rows = (j.keyEvents || []).filter(k => k.scoringPlay || /card/i.test(k.type?.text || "")).map(k => {
+    const txt = k.type?.text || "";
+    const icon = /red/i.test(txt) ? "🟥" : /yellow/i.test(txt) ? "🟨" : "⚽";
+    const tag = /own/i.test(txt) ? " (csc)" : /penalty/i.test(txt) ? " (pen.)" : "";
+    const who = `${icon} ${esc(k.participants?.[0]?.athlete?.displayName || "")}${tag}`;
+    const min = `<td class="evm">${esc(k.clock?.displayValue || "")}</td>`;
+    return side(k) === 0
+      ? `<tr><td class="evl">${who}</td>${min}<td class="evr"></td></tr>`
+      : `<tr><td class="evl"></td>${min}<td class="evr">${who}</td></tr>`;
+  }).join("");
+
+  return `<section class="card">
+    <button class="back" data-back>← Retour</button>
+    ${head}
+    <p class="meta" style="text-align:center">${st.state === "in" ? '<span class="live">EN DIRECT</span>' : ""}${esc(st.shortDetail || st.detail || "")}</p>
+    <h3 class="sub-h">Buts et cartons</h3>
+    ${rows ? `<table class="tbl ev">${rows}</table>` : '<p class="empty">Aucun but ni carton.</p>'}
+  </section>`;
+}
+
 async function detailHTML(id, league) {
+  if (isFoot(league)) return footDetailHTML(id, league);
   const j = await getJSON(`${SCORES}${LEAGUES[league].path}/summary?event=${encodeURIComponent(id)}`);
   const comp = j.header?.competitions?.[0] || {};
   const comps = comp.competitors || [];
@@ -1207,12 +1302,14 @@ async function render(opts = {}) {
       } else if (state.tab === "home") {
         html = await homeHTML();
       } else if (state.tab === "cal" && state.matchView !== "results") {
-        const evs = await loadEvents(L, today, addDays(today, 7));
+        const foot = isFoot(L);
+        const evs = await loadEvents(L, today, addDays(today, foot ? 60 : 7));
         let teams = [];
         try { teams = await loadTeams(L); } catch (e) { teams = []; }
         const shown = evs.filter(e => !state.calTeamFilter || e.cs.some(c => c.name === state.calTeamFilter));
         const select = `<select class="filter" id="calTeamFilter"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}"${t === state.calTeamFilter ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
-        html = `${mviewNav()}<section class="card"><h2>Calendrier : 7 prochains jours</h2>${select}${shown.length ? shown.map(matchHTML).join("") : '<p class="empty">Aucun match prévu pour cette sélection.</p>'}</section>`;
+        const body = foot ? matchdayHTML(byMatchday(shown, false)) : shown.map(e => matchHTML(e)).join("");
+        html = `${mviewNav()}<section class="card"><h2>${foot ? "Calendrier : prochaines journées" : "Calendrier : 7 prochains jours"}</h2>${select}${shown.length ? body : '<p class="empty">Aucun match prévu pour cette sélection.</p>'}</section>`;
       } else if (state.tab === "cal") {
         const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, -1));
         const played = evs.filter(e => e.state === "post" && e.stype !== 1).reverse();
@@ -1220,7 +1317,8 @@ async function render(opts = {}) {
         try { teams = await loadTeams(L); } catch (e) { teams = []; }
         const shown = played.filter(e => !state.teamFilter || e.cs.some(c => c.name === state.teamFilter));
         const select = `<select class="filter" id="teamFilter"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}"${t === state.teamFilter ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
-        html = `${mviewNav()}<section class="card"><h2>Résultats : saison en cours</h2>${select}${shown.length ? shown.map(matchHTML).join("") : '<p class="empty">Aucun résultat pour cette sélection.</p>'}</section>`;
+        const body = isFoot(L) ? matchdayHTML(byMatchday(shown, true)) : shown.map(e => matchHTML(e)).join("");
+        html = `${mviewNav()}<section class="card"><h2>Résultats : saison en cours</h2>${select}${shown.length ? body : '<p class="empty">Aucun résultat pour cette sélection.</p>'}</section>`;
       } else if (state.tab === "standings") {
         html = await standingsHTML(L);
       } else if (state.tab === "stats") {
