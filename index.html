@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.json">
 <title>Tribune</title>
 <style>
-:root{color-scheme:light dark;--bg:#f8fafc;--card:#ffffff;--text:#0f172a;--muted:#64748b;--accent:#2563eb;--star:#f59e0b;--live:#dc2626;--direct:#16a34a;--playin:#f59e0b}
+:root{color-scheme:light dark;--bg:#f8fafc;--card:#ffffff;--text:#0f172a;--muted:#64748b;--accent:#2563eb;--live:#dc2626;--direct:#16a34a;--playin:#f59e0b}
 @media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--accent:#60a5fa;--live:#f87171;--direct:#4ade80;--playin:#fbbf24}}
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text);padding:env(safe-area-inset-top) 16px 40px;min-height:100vh}
@@ -26,12 +26,10 @@ button.add{border:0;border-radius:10px;padding:10px 16px;background:var(--accent
 ul{list-style:none;padding:0;margin:8px 0 0}
 li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #94a3b833}
 li:last-child{border-bottom:0}
-.star{color:var(--star);margin-right:6px}
 .del{border:0;background:none;color:var(--muted);font-size:22px;padding:0 4px}
 .empty{color:var(--muted);font-size:14px;margin:8px 0 0}
 .meta{color:var(--muted);font-size:13px;margin-top:4px}
 .live{color:var(--live);font-weight:700;font-size:12px;margin-right:6px}
-.tag{background:var(--accent);color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;margin-left:4px}
 h2{font-size:17px;margin:0 0 6px}
 b{font-variant-numeric:tabular-nums}
 .ver{position:fixed;left:10px;bottom:calc(env(safe-area-inset-bottom) + 4px);font-size:11px;color:var(--muted);opacity:.7}
@@ -68,9 +66,8 @@ li.st.playin{background:#f59e0b22;box-shadow:inset 3px 0 0 var(--playin)}
 <div class="nav" id="leagues"></div>
 <div class="nav" id="tabs"></div>
 
-<div id="favs"></div>
 <div id="app"></div>
-<div class="ver">v1.2</div>
+<div class="ver">v1.3</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -84,11 +81,20 @@ const LEAGUES = {
   // "Top 14":  {path: "rugby/270557", startMonth: 7, ph: "ex. Stade Toulousain"},
   // "F1":      {path: "racing/f1", startMonth: 2, ph: "ex. Charles Leclerc"}
 };
-const TABS = ["Mes matchs", "Aujourd'hui", "Calendrier", "Résultats", "Classement"];
+const TABS = [
+  {key: "mine", label: "Mes matchs"},
+  {key: "favs", label: "Favoris"},
+  {key: "today", label: "Aujourd'hui"},
+  {key: "cal", label: "Calendrier"},
+  {key: "results", label: "Résultats"},
+  {key: "standings", label: "Classement"}
+];
 
-const state = { league: "NBA", tab: 0 };
+const state = { league: "NBA", tab: "mine" };
 let favs = loadFavs();
 let token = 0;
+let RANKS = new Map(); // nom d'équipe -> {seed, conf}
+let TOP = new Set();   // équipes du top 6 de leur conférence
 
 function loadFavs() {
   try { return JSON.parse(localStorage.getItem("tribune-favoris")) || {}; } catch (e) { return {}; }
@@ -156,35 +162,63 @@ async function loadEvents(league, from, to) {
   return unique.map(parseEvent).sort((a, b) => a.date - b.date);
 }
 
-// Classement : groupes (conférences) avec rang (seed) par équipe. Mis en cache.
+// Classement : conférences, équipes triées par rang. Mis en cache.
 let standingsCache = {};
 async function getStandings(league) {
   if (standingsCache[league]) return standingsCache[league];
   const j = await getJSON(`${STANDINGS}${LEAGUES[league].path}/standings`);
-  const groups = (j.children || []).map(g => ({
-    name: g.name || "Classement",
-    entries: (g.standings?.entries || []).map((en, i) => {
+  const groups = (j.children || []).map(g => {
+    const raw = (g.standings?.entries || []).map(en => {
       const st = Object.fromEntries((en.stats || []).map(s => [s.name, s.displayValue]));
       const ps = parseInt(st.playoffSeed, 10);
+      const wp = parseFloat(st.winPercent ?? st.winPct ?? "");
+      const w = parseFloat(st.wins ?? "");
       return {
         name: en.team?.displayName || en.athlete?.displayName || "?",
         logo: en.team?.logos?.[0]?.href || en.team?.logo || "",
-        seed: Number.isFinite(ps) ? ps : i + 1,
-        st
+        st,
+        ps: Number.isFinite(ps) ? ps : null,
+        score: Number.isFinite(wp) ? wp : (Number.isFinite(w) ? w : 0)
       };
-    })
-  })).filter(g => g.entries.length);
+    });
+    // Tri explicite : rang officiel si connu, sinon meilleur pourcentage de victoires
+    raw.sort((a, b) => {
+      if (a.ps !== null && b.ps !== null) return a.ps - b.ps;
+      return b.score - a.score;
+    });
+    const entries = raw.map((en, i) => ({ ...en, seed: en.ps ?? i + 1 }));
+    return { name: g.name || "Classement", entries };
+  }).filter(g => g.entries.length);
   standingsCache[league] = groups;
   return groups;
 }
 
-// Équipes du top 6 de leur conférence (playoffs directs)
-async function topSix(league) {
-  const set = new Set();
+function confLetter(name) {
+  const s = String(name).toLowerCase();
+  if (s.includes("east") || s.includes("est")) return "E";
+  if (s.includes("west") || s.includes("ouest")) return "O";
+  return "";
+}
+
+async function loadRanks(league) {
+  const map = new Map();
+  const top = new Set();
   for (const g of await getStandings(league)) {
-    for (const en of g.entries) if (en.seed <= 6) set.add(en.name);
+    const conf = confLetter(g.name);
+    for (const en of g.entries) {
+      map.set(en.name, { seed: en.seed, conf });
+      if (en.seed <= 6) top.add(en.name);
+    }
   }
-  return set;
+  return { map, top };
+}
+
+// Nom + rang entre parenthèses, ex. « Boston Celtics (1er E) »
+function teamLabel(name) {
+  const r = RANKS.get(name);
+  if (!r) return esc(name);
+  const ord = r.seed === 1 ? "er" : "e";
+  return `${esc(name)} (${r.seed}${ord}${r.conf ? " " + r.conf : ""})`;
 }
 
 function isFav(text, league) {
@@ -192,39 +226,33 @@ function isFav(text, league) {
   return (favs[league] || []).some(f => t.includes(f.toLowerCase()));
 }
 
-function matchHTML(e, league, top) {
-  const fav = e.cs.some(c => isFav(c.name, league)) || isFav(e.name, league);
+function matchHTML(e, league) {
   const when = e.date.toLocaleString("fr-FR", {weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
 
   // Événement sans deux équipes (ex. course F1) : affichage simple
   if (e.cs.length !== 2) {
     const status = e.state === "pre" ? when : (esc(e.detail) || when);
-    return `<div class="match">${fav ? '<span class="star">★</span>' : ""}${esc(e.name)}<div class="meta">${status}</div></div>`;
+    return `<div class="match">${esc(e.name)}<div class="meta">${status}</div></div>`;
   }
 
   const [a, b] = e.cs;
   const pre = e.state === "pre";
-  const grosse = top.has(a.name) && top.has(b.name);
   const mid = pre ? "vs" : `<b>${esc(a.score)} - ${esc(b.score)}</b>`;
-  const tags = [
-    e.state === "in" ? '<span class="live">EN DIRECT</span>' : "",
-    fav ? '<span class="star">★</span>' : "",
-    grosse && !fav ? '<span class="tag">Grosse affiche</span>' : ""
-  ].join("");
+  const live = e.state === "in" ? '<span class="live">EN DIRECT</span>' : "";
   const status = pre ? when : (esc(e.detail) || when);
   const side = t => `<div class="side">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : ""}</div>`;
-  const nm = t => `<div class="nm2">${esc(t.name)}</div>`;
+  const nm = t => `<div class="nm2">${teamLabel(t.name)}</div>`;
 
   return `<div class="match">
     <div class="row">${side(a)}<div class="mid">${mid}</div>${side(b)}</div>
     <div class="row">${nm(a)}<div class="mid"></div>${nm(b)}</div>
-    <div class="meta">${tags} ${status}</div>
+    <div class="meta">${live}${status}</div>
   </div>`;
 }
 
-function listCard(title, evs, league, emptyMsg, top) {
+function listCard(title, evs, league, emptyMsg) {
   const body = evs.length
-    ? evs.map(e => matchHTML(e, league, top)).join("")
+    ? evs.map(e => matchHTML(e, league)).join("")
     : `<p class="empty">${esc(emptyMsg)}</p>`;
   return `<section class="card"><h2>${esc(title)}</h2>${body}</section>`;
 }
@@ -248,7 +276,7 @@ async function loadTeams(league) {
 function favsCard(league, teams) {
   const items = favs[league] || [];
   const rows = items.map((n, i) =>
-    `<li><span><span class="star">★</span>${esc(n)}</span><button class="del" data-i="${i}" aria-label="Retirer">×</button></li>`
+    `<li><span>${esc(n)}</span><button class="del" data-i="${i}" aria-label="Retirer">×</button></li>`
   ).join("");
   const picker = teams && teams.length
     ? `<select id="favInput"><option value="">Choisir une équipe…</option>${teams.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select>`
@@ -272,11 +300,10 @@ async function standingsHTML(league) {
     const rows = g.entries.map(en => {
       const cls = en.seed <= 6 ? "direct" : en.seed <= 10 ? "playin" : "";
       const logo = en.logo ? `<img class="logo" src="${esc(en.logo)}" alt="">` : "";
-      const fav = isFav(en.name, league) ? '<span class="star">★</span>' : "";
       const parts = [];
       if (en.st.wins !== undefined) parts.push(`${en.st.wins}V ${en.st.losses ?? ""}D`);
       if (en.st.points !== undefined) parts.push(`${en.st.points} pts`);
-      return `<li class="st ${cls}"><span class="rank">${esc(en.seed)}</span><span class="nm">${fav}${logo}${esc(en.name)}</span><span class="meta">${esc(parts.join(" · "))}</span></li>`;
+      return `<li class="st ${cls}"><span class="rank">${esc(en.seed)}</span><span class="nm">${logo}${esc(en.name)}</span><span class="meta">${esc(parts.join(" · "))}</span></li>`;
     }).join("");
     out += `<section class="card"><h2>${esc(g.name)}</h2>${legend}<ul>${rows}</ul></section>`;
   }
@@ -286,8 +313,8 @@ async function standingsHTML(league) {
 function renderNav() {
   document.getElementById("leagues").innerHTML = Object.keys(LEAGUES).map(l =>
     `<button data-league="${esc(l)}" class="${l === state.league ? "on" : ""}">${esc(l)}</button>`).join("");
-  document.getElementById("tabs").innerHTML = TABS.map((t, i) =>
-    `<button data-tab="${i}" class="${i === state.tab ? "on" : ""}">${esc(t)}</button>`).join("");
+  document.getElementById("tabs").innerHTML = TABS.map(t =>
+    `<button data-tab="${t.key}" class="${t.key === state.tab ? "on" : ""}">${esc(t.label)}</button>`).join("");
 }
 
 async function render() {
@@ -296,40 +323,39 @@ async function render() {
   const L = state.league;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const app = document.getElementById("app");
-  const favsEl = document.getElementById("favs");
-  if (state.tab === 0) {
-    let teams = [];
-    try { teams = await loadTeams(L); } catch (e) { teams = []; }
-    if (my !== token) return;
-    favsEl.innerHTML = favsCard(L, teams);
-  } else {
-    favsEl.innerHTML = "";
-  }
   app.innerHTML = '<p class="empty">Chargement…</p>';
 
   try {
-    let top = new Set();
-    try { top = await topSix(L); } catch (e) { top = new Set(); }
+    try {
+      const r = await loadRanks(L);
+      RANKS = r.map; TOP = r.top;
+    } catch (e) {
+      RANKS = new Map(); TOP = new Set();
+    }
 
     let html = "";
-    if (state.tab === 0) {
-      // 3 prochains jours : favoris + grosses affiches
+    if (state.tab === "mine") {
+      // 3 prochains jours : favoris + grosses affiches (deux équipes du top 6)
       const evs = await loadEvents(L, today, addDays(today, 2));
       const mine = evs.filter(e =>
         e.cs.some(c => isFav(c.name, L)) || isFav(e.name, L) ||
-        (e.cs.length === 2 && e.cs.every(c => top.has(c.name))));
+        (e.cs.length === 2 && e.cs.every(c => TOP.has(c.name))));
       html = listCard("Mes matchs et grosses affiches (3 jours)", mine, L,
-        "Aucun match de vos favoris ni grosse affiche dans les 3 prochains jours.", top);
-    } else if (state.tab === 1) {
+        "Aucun match de vos favoris ni grosse affiche dans les 3 prochains jours.");
+    } else if (state.tab === "favs") {
+      let teams = [];
+      try { teams = await loadTeams(L); } catch (e) { teams = []; }
+      html = favsCard(L, teams);
+    } else if (state.tab === "today") {
       const evs = await loadEvents(L, today, today);
-      html = listCard("Aujourd'hui", evs, L, "Aucun match aujourd'hui.", top);
-    } else if (state.tab === 2) {
+      html = listCard("Aujourd'hui", evs, L, "Aucun match aujourd'hui.");
+    } else if (state.tab === "cal") {
       const evs = await loadEvents(L, addDays(today, 1), addDays(today, 7));
-      html = listCard("Calendrier : 7 prochains jours", evs, L, "Rien de prévu dans les 7 prochains jours.", top);
-    } else if (state.tab === 3) {
+      html = listCard("Calendrier : 7 prochains jours", evs, L, "Rien de prévu dans les 7 prochains jours.");
+    } else if (state.tab === "results") {
       const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, -1));
       const played = evs.filter(e => e.state === "post").reverse();
-      html = listCard("Résultats : saison en cours", played, L, "Aucun résultat pour la saison en cours.", top);
+      html = listCard("Résultats : saison en cours", played, L, "Aucun résultat pour la saison en cours.");
     } else {
       html = await standingsHTML(L);
     }
@@ -354,7 +380,7 @@ function attachHandlers() {
     saveFavs();
     render();
   });
-  document.querySelectorAll("#favs .del").forEach(btn => btn.addEventListener("click", () => {
+  document.querySelectorAll("#app .del").forEach(btn => btn.addEventListener("click", () => {
     favs[state.league].splice(+btn.dataset.i, 1);
     saveFavs();
     render();
@@ -367,7 +393,7 @@ document.getElementById("leagues").addEventListener("click", e => {
 });
 document.getElementById("tabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-tab]");
-  if (b) { state.tab = +b.dataset.tab; render(); }
+  if (b) { state.tab = b.dataset.tab; render(); }
 });
 
 render();
