@@ -9,17 +9,19 @@
 <link rel="manifest" href="manifest.json">
 <title>Tribune</title>
 <style>
-:root{color-scheme:light dark;--bg:#f8fafc;--card:#ffffff;--text:#0f172a;--muted:#64748b;--accent:#2563eb;--live:#dc2626;--direct:#16a34a;--playin:#f59e0b}
-@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--accent:#60a5fa;--live:#f87171;--direct:#4ade80;--playin:#fbbf24}}
+:root{color-scheme:light dark;--bg:#eef2ff;--card:#ffffff;--text:#1e1b4b;--muted:#6b6f9c;--accent:#7c3aed;--accent2:#ec4899;--live:#e11d48;--direct:#059669;--playin:#f97316}
+@media (prefers-color-scheme:dark){:root{--bg:#0b0a1f;--card:#1a1838;--text:#f5f3ff;--muted:#a5a3d1;--accent:#a78bfa;--accent2:#f472b6;--live:#fb7185;--direct:#34d399;--playin:#fb923c}}
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text);padding:env(safe-area-inset-top) 16px 40px;min-height:100vh}
 header{padding:16px 0 4px}
-h1{margin:0;font-size:28px}
+h1{margin:0;font-size:32px;font-weight:800;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
 .sub{color:var(--muted);font-size:14px;margin-top:4px}
 .nav{display:flex;gap:8px;overflow-x:auto;padding:10px 0 0;scrollbar-width:none}
 .nav button{flex:none;border:0;border-radius:999px;padding:8px 14px;background:var(--card);color:var(--text);font-size:14px}
-.nav button.on{background:var(--accent);color:#fff}
-.card{background:var(--card);border-radius:16px;padding:16px;margin:12px 0}
+.nav button{font-weight:600}
+.nav button.on{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 4px 12px rgba(124,58,237,.35)}
+.card{background:var(--card);border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 6px 24px rgba(88,28,135,.10)}
+.card h2{color:var(--text)}
 form{display:flex;gap:8px}
 input,select{flex:1;min-width:0;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid #cbd5e1;background:transparent;color:var(--text)}
 button.add{border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:#fff;font-size:15px}
@@ -33,6 +35,7 @@ li:last-child{border-bottom:0}
 h2{font-size:17px;margin:0 0 6px}
 h3.sub-h{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:16px 0 0}
 b{font-variant-numeric:tabular-nums}
+.pdot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:7px;vertical-align:middle;box-shadow:0 0 0 2px var(--card)}
 .ver{position:fixed;left:10px;bottom:calc(env(safe-area-inset-bottom) + 4px);font-size:11px;color:var(--muted);opacity:.7}
 
 /* Matchs : logos sur une ligne, noms (une ligne) puis rang en dessous */
@@ -110,7 +113,7 @@ table.qt th img{width:20px;height:20px;object-fit:contain;vertical-align:middle;
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.18</div>
+<div class="ver">v1.19</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -181,6 +184,13 @@ const ymd = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const f1 = n => Number.isFinite(n) ? (Math.round(n * 10) / 10).toFixed(1) : "–";
+// Pastille aux couleurs de l'équipe du joueur (principale en haut, secondaire en bas)
+const HEX = /^[0-9a-f]{6}$/i;
+function pdot(c, a) {
+  if (!HEX.test(String(c || ""))) return "";
+  const s = HEX.test(String(a || "")) ? a : c;
+  return `<span class="pdot" style="background:linear-gradient(#${c} 50%,#${s} 50%)"></span>`;
+}
 
 function seasonStart(startMonth) {
   const now = new Date();
@@ -377,7 +387,7 @@ async function loadGames() {
       day: a[idx.jour], name: a[idx.joueur], team: a[idx.equipe], teamShort: a[idx.equipe_court],
       opp: a[idx.adversaire], ts: a[idx.score_equipe], os: a[idx.score_adversaire],
       pts: a[idx.pts], reb: a[idx.reb], ast: a[idx.ast], stl: a[idx.stl], blk: a[idx.blk],
-      tpm: a[idx.tpm], gs: a[idx.gmsc]
+      tpm: a[idx.tpm], gs: a[idx.gmsc], pc: a[idx.couleur] || "", pa: a[idx.couleur_alt] || ""
     }));
     GAMES = { season: j.seasonLabel || "", updated: j.updated || "", rows };
     GAMES_ERR = null;
@@ -418,7 +428,7 @@ function averages(rows, minGames) {
     const k = r.name + "|" + r.team;
     let e = acc.get(k);
     if (!e) {
-      e = { name: r.name, team: r.team, teamShort: r.teamShort, games: 0, sum: {} };
+      e = { name: r.name, team: r.team, teamShort: r.teamShort, pc: r.pc, pa: r.pa, games: 0, sum: {} };
       CATS.forEach(c => e.sum[c.key] = 0);
       e.sum.gs = 0;
       acc.set(k, e);
@@ -430,7 +440,7 @@ function averages(rows, minGames) {
   return [...acc.values()].filter(e => e.games >= minGames).map(e => {
     const avg = {};
     for (const k of Object.keys(e.sum)) avg[k] = e.sum[k] / e.games;
-    return { name: e.name, team: e.team, teamShort: e.teamShort, games: e.games, avg };
+    return { name: e.name, team: e.team, teamShort: e.teamShort, pc: e.pc, pa: e.pa, games: e.games, avg };
   });
 }
 
@@ -472,7 +482,7 @@ function homeMvpHTML(data) {
   const top = data.rows.filter(r => r.day === refDay).sort((a, b) => b.gs - a.gs).slice(0, 3);
   const items = top.map((r, i) => `
     <div class="pl-row">
-      <div class="pl-name">${i + 1}. ${esc(r.name)} <span class="meta">${esc(r.teamShort)}</span></div>
+      <div class="pl-name">${i + 1}. ${pdot(r.pc, r.pa)}${esc(r.name)} <span class="meta">${esc(r.teamShort)}</span></div>
       <div class="pl-score">${esc(r.teamShort)} <b>${esc(r.ts)} - ${esc(r.os)}</b> ${esc(r.opp)}</div>
       <div class="pl-stats">
         <div>PTS<b>${esc(r.pts)}</b></div><div>REB<b>${esc(r.reb)}</b></div>
@@ -503,7 +513,7 @@ function homePlayersHTML(data) {
     const av = averages(mine, 1)[0] || {avg: {}, games: 0, team: "", teamShort: ""};
     const a = av.avg;
     return `<div class="pl-row">
-      <div class="pl-name">${esc(name)} <span class="meta">${esc(av.teamShort || av.team)}</span></div>
+      <div class="pl-name">${pdot(av.pc, av.pa)}${esc(name)} <span class="meta">${esc(av.teamShort || av.team)}</span></div>
       <div class="pl-line">${av.games} match${av.games > 1 ? "s" : ""} · GmSc moyen <b>${esc(f1(a.gs))}</b></div>
       <div class="pl-stats">
         <div>PTS<b>${esc(f1(a.pts))}</b></div><div>REB<b>${esc(f1(a.reb))}</b></div>
@@ -552,7 +562,7 @@ async function statsHTML() {
     body = CATS.map(c => {
       const list = [...avgs].sort((a, b) => b.avg[c.key] - a.avg[c.key]).slice(0, 5);
       const rows = list.map((p, i) =>
-        `<tr><td>${i + 1}. ${esc(p.name)}</td><td>${esc(p.teamShort)}</td><td><b>${esc(f1(p.avg[c.key]))}</b></td><td>${p.games}</td></tr>`).join("");
+        `<tr><td>${i + 1}. ${pdot(p.pc, p.pa)}${esc(p.name)}</td><td>${esc(p.teamShort)}</td><td><b>${esc(f1(p.avg[c.key]))}</b></td><td>${p.games}</td></tr>`).join("");
       return `<section class="card"><h2>${esc(c.label)}</h2>${list.length
         ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>Moy.</th><th>Matchs</th></tr>${rows}</table>`
         : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
@@ -562,7 +572,7 @@ async function statsHTML() {
     body = CATS.map(c => {
       const list = [...subset].sort((a, b) => b[c.key] - a[c.key]).slice(0, 5);
       const rows = list.map((r, i) =>
-        `<tr><td>${i + 1}. ${esc(r.name)}</td><td><b>${esc(r[c.key])}</b></td><td>${matchText(r)}</td></tr>`).join("");
+        `<tr><td>${i + 1}. ${pdot(r.pc, r.pa)}${esc(r.name)}</td><td><b>${esc(r[c.key])}</b></td><td>${matchText(r)}</td></tr>`).join("");
       return `<section class="card"><h2>${esc(c.label)}</h2>${list.length
         ? `<table class="tbl"><tr><th>Joueur</th><th>Valeur</th><th>Match</th></tr>${rows}</table>`
         : '<p class="empty">Aucune performance.</p>'}</section>`;
@@ -572,7 +582,7 @@ async function statsHTML() {
     const avgs = averages(subset, minGames);
     const list = [...avgs].sort((a, b) => b.avg.gs - a.avg.gs).slice(0, 10);
     const rows = list.map((p, i) =>
-      `<tr><td>${i + 1}. ${esc(p.name)}</td><td>${esc(p.teamShort)}</td><td><b>${esc(f1(p.avg.gs))}</b></td><td>${p.games}</td></tr>`).join("");
+      `<tr><td>${i + 1}. ${pdot(p.pc, p.pa)}${esc(p.name)}</td><td>${esc(p.teamShort)}</td><td><b>${esc(f1(p.avg.gs))}</b></td><td>${p.games}</td></tr>`).join("");
     body = `<section class="card"><h2>Top 10 MVP</h2><p class="meta">Game Score moyen · ${minText}</p>${list.length
       ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>GmSc</th><th>Matchs</th></tr>${rows}</table>`
       : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
@@ -608,8 +618,12 @@ async function playersCard() {
   const input = names.length
     ? `<input id="playerInput" list="playerList" autocomplete="off" placeholder="ex. Nikola Jokic"><datalist id="playerList">${names.map(n => `<option value="${esc(n)}"></option>`).join("")}</datalist>`
     : `<input id="playerInput" autocomplete="off" placeholder="ex. Nikola Jokic">`;
-  const rows = players.map((n, i) =>
-    `<li><span>${esc(n)}</span><button class="pdel" data-pi="${i}" aria-label="Retirer">×</button></li>`).join("");
+  const colorOfName = new Map();
+  for (const r of data.rows) colorOfName.set(r.name, [r.pc, r.pa]);
+  const rows = players.map((n, i) => {
+    const c = colorOfName.get(n) || [];
+    return `<li><span>${pdot(c[0], c[1])}${esc(n)}</span><button class="pdel" data-pi="${i}" aria-label="Retirer">×</button></li>`;
+  }).join("");
   return `<section class="card">
     <h2>Mes joueurs</h2>
     <form id="addPlayer">

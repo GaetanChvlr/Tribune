@@ -14,7 +14,7 @@ const OUT = "data/games.json";
 const TZ = "America/New_York";
 
 const COLUMNS = ["jour", "joueur", "equipe", "equipe_court", "adversaire", "score_equipe", "score_adversaire",
-  "pts", "reb", "ast", "stl", "blk", "tpm", "gmsc"];
+  "pts", "reb", "ast", "stl", "blk", "tpm", "gmsc", "couleur", "couleur_alt"];
 
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
 const usDay = date => dayFmt.format(date); // "AAAA-MM-JJ"
@@ -104,7 +104,9 @@ async function rowsOfEvent(id, dayKey) {
         num(st("STL")),
         num(st("BLK")),
         made(st("3PT"))[0],
-        round1(gameScore(names, x.stats))
+        round1(gameScore(names, x.stats)),
+        team.team?.color ?? me?.team?.color ?? "",
+        team.team?.alternateColor ?? me?.team?.alternateColor ?? ""
       ]);
     }
   }
