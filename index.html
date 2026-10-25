@@ -9,27 +9,32 @@
 <link rel="manifest" href="manifest.json">
 <title>Tribune</title>
 <style>
-:root{color-scheme:light dark;--bg:#f8fafc;--card:#ffffff;--text:#0f172a;--muted:#64748b;--accent:#2563eb;--star:#f59e0b}
-@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--accent:#60a5fa}}
+:root{color-scheme:light dark;--bg:#f8fafc;--card:#ffffff;--text:#0f172a;--muted:#64748b;--accent:#2563eb;--star:#f59e0b;--live:#dc2626}
+@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--accent:#60a5fa;--live:#f87171}}
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text);padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom);min-height:100vh}
 header{padding:16px 0 4px}
 h1{margin:0;font-size:28px}
 .sub{color:var(--muted);font-size:14px;margin-top:4px}
-nav{display:flex;gap:8px;overflow-x:auto;padding:12px 0}
-nav button{flex:none;border:0;border-radius:999px;padding:8px 14px;background:var(--card);color:var(--text);font-size:14px}
-nav button.on{background:var(--accent);color:#fff}
+.nav{display:flex;gap:8px;overflow-x:auto;padding:10px 0 0;scrollbar-width:none}
+.nav button{flex:none;border:0;border-radius:999px;padding:8px 14px;background:var(--card);color:var(--text);font-size:14px}
+.nav button.on{background:var(--accent);color:#fff}
 .card{background:var(--card);border-radius:16px;padding:16px;margin:12px 0}
 form{display:flex;gap:8px}
 input{flex:1;min-width:0;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid #cbd5e1;background:transparent;color:var(--text)}
 button.add{border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:#fff;font-size:15px}
 ul{list-style:none;padding:0;margin:8px 0 0}
-li{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #94a3b833}
+li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #94a3b833}
 li:last-child{border-bottom:0}
-.star{color:var(--star);font-size:18px;margin-right:6px}
+.star{color:var(--star);margin-right:6px}
 .del{border:0;background:none;color:var(--muted);font-size:22px;padding:0 4px}
 .empty{color:var(--muted);font-size:14px;margin:8px 0 0}
+.meta{color:var(--muted);font-size:13px;margin-top:2px}
+.live{color:var(--live);font-weight:700;font-size:12px;margin-left:6px}
+.rank{width:26px;color:var(--muted);font-variant-numeric:tabular-nums}
+.nm{flex:1}
 h2{font-size:17px;margin:0 0 6px}
+b{font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -38,86 +43,207 @@ h2{font-size:17px;margin:0 0 6px}
   <div class="sub">Vos équipes et pilotes, suivis à votre façon</div>
 </header>
 
-<nav id="tabs"></nav>
+<div class="nav" id="leagues"></div>
+<div class="nav" id="tabs"></div>
 
-<section class="card">
-  <h2>Mes favoris</h2>
-  <form id="addForm">
-    <input id="name" autocomplete="off" required>
-    <button class="add" type="submit">Ajouter</button>
-  </form>
-  <ul id="list"></ul>
-  <p class="empty" id="empty"></p>
-</section>
-
-<section class="card">
-  <h2>Résultats</h2>
-  <p class="empty">Les scores et calendriers seront branchés sur une source de données à l'étape suivante.</p>
-</section>
+<div id="favs"></div>
+<div id="app"></div>
 
 <script>
+// Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
+const SCORES = "https://site.api.espn.com/apis/site/v2/sports/";
+const STANDINGS = "https://site.api.espn.com/apis/v2/sports/";
+
 const LEAGUES = {
-  "Ligue 1": "ex. Paris Saint-Germain",
-  "NBA": "ex. Boston Celtics",
-  "Top 14": "ex. Stade Toulousain",
-  "F1": "ex. Charles Leclerc"
+  "Ligue 1": {path: "soccer/fra.1", startMonth: 7, ph: "ex. Paris Saint-Germain"},
+  "NBA":     {path: "basketball/nba", startMonth: 9, ph: "ex. Boston Celtics"},
+  "Top 14":  {path: "rugby/270557", startMonth: 7, ph: "ex. Stade Toulousain"},
+  "F1":      {path: "racing/f1", startMonth: 2, ph: "ex. Charles Leclerc"}
 };
-const KEY = "tribune-favoris";
-let current = Object.keys(LEAGUES)[0];
-let data = loadData();
+const TABS = ["Mes matchs", "Aujourd'hui", "Calendrier", "Résultats", "Classement"];
 
-function loadData() {
-  try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; }
+const state = { league: "Ligue 1", tab: 0 };
+let favs = loadFavs();
+let token = 0;
+
+function loadFavs() {
+  try { return JSON.parse(localStorage.getItem("tribune-favoris")) || {}; } catch (e) { return {}; }
 }
-function saveData() {
-  try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
+function saveFavs() {
+  try { localStorage.setItem("tribune-favoris", JSON.stringify(favs)); } catch (e) {}
 }
 
-function render() {
-  const tabs = document.getElementById("tabs");
-  tabs.innerHTML = "";
-  for (const league of Object.keys(LEAGUES)) {
-    const b = document.createElement("button");
-    b.textContent = league;
-    if (league === current) b.className = "on";
-    b.onclick = () => { current = league; render(); };
-    tabs.appendChild(b);
+const pad = n => String(n).padStart(2, "0");
+const ymd = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const parseYmd = s => new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8));
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function seasonStart(startMonth) {
+  const now = new Date();
+  const y = now.getMonth() >= startMonth ? now.getFullYear() : now.getFullYear() - 1;
+  return new Date(y, startMonth, 1);
+}
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+function parseEvent(ev) {
+  const comp = (ev.competitions || [])[0] || {};
+  const cs = (comp.competitors || []).map(c => ({
+    name: c.team?.displayName || c.athlete?.displayName || c.displayName || "",
+    score: c.score ?? ""
+  }));
+  const t = ev.status?.type || {};
+  return {
+    name: ev.name || "",
+    date: new Date(ev.date),
+    cs,
+    state: t.state || "",
+    detail: t.shortDetail || t.detail || ""
+  };
+}
+
+async function loadEvents(league, from, to) {
+  const L = LEAGUES[league];
+  const j = await getJSON(`${SCORES}${L.path}/scoreboard?dates=${ymd(from)}-${ymd(to)}&limit=1000`);
+  return (j.events || []).map(parseEvent).sort((a, b) => a.date - b.date);
+}
+
+function isFav(text, league) {
+  const t = String(text).toLowerCase();
+  return (favs[league] || []).some(f => t.includes(f.toLowerCase()));
+}
+
+function eventHTML(e, league) {
+  const fav = e.cs.some(c => isFav(c.name, league)) || isFav(e.name, league);
+  const when = e.date.toLocaleString("fr-FR", {weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
+  const title = e.cs.length === 2
+    ? `${esc(e.cs[0].name)} <b>${esc(e.cs[0].score)} - ${esc(e.cs[1].score)}</b> ${esc(e.cs[1].name)}`
+    : esc(e.name);
+  const live = e.state === "in" ? '<span class="live">EN DIRECT</span>' : "";
+  const status = e.state === "pre" ? when : (esc(e.detail) || when);
+  return `<li>${fav ? '<span class="star">★</span>' : ""}<div class="nm">${title}${live}<div class="meta">${status}</div></div></li>`;
+}
+
+function listCard(title, evs, league, emptyMsg) {
+  const body = evs.length
+    ? `<ul>${evs.map(e => eventHTML(e, league)).join("")}</ul>`
+    : `<p class="empty">${esc(emptyMsg)}</p>`;
+  return `<section class="card"><h2>${esc(title)}</h2>${body}</section>`;
+}
+
+function favsCard(league) {
+  const items = favs[league] || [];
+  const rows = items.map((n, i) =>
+    `<li><span><span class="star">★</span>${esc(n)}</span><button class="del" data-i="${i}" aria-label="Retirer">×</button></li>`
+  ).join("");
+  return `<section class="card">
+    <h2>Mes favoris</h2>
+    <form id="addForm">
+      <input id="favInput" autocomplete="off" placeholder="${esc(LEAGUES[league].ph)}">
+      <button class="add" type="submit">Ajouter</button>
+    </form>
+    <ul>${rows}</ul>
+    ${items.length ? "" : `<p class="empty">Aucun favori en ${esc(league)} pour le moment.</p>`}
+  </section>`;
+}
+
+async function standingsHTML(league) {
+  const j = await getJSON(`${STANDINGS}${LEAGUES[league].path}/standings`);
+  let out = "";
+  for (const g of (j.children || [])) {
+    const entries = g.standings?.entries || [];
+    if (!entries.length) continue;
+    const rows = entries.map((en, i) => {
+      const st = Object.fromEntries((en.stats || []).map(s => [s.name, s.displayValue]));
+      const name = en.team?.displayName || en.athlete?.displayName || "?";
+      const fav = isFav(name, league) ? '<span class="star">★</span>' : "";
+      const parts = [];
+      if (st.points !== undefined) parts.push(`${st.points} pts`);
+      if (st.gamesPlayed !== undefined) parts.push(`${st.gamesPlayed} matchs`);
+      if (st.wins !== undefined) parts.push(`${st.wins}V ${st.losses ?? ""}D`);
+      return `<li><span class="rank">${esc(st.rank ?? i + 1)}</span><span class="nm">${fav}${esc(name)}</span><span class="meta">${esc(parts.join(" · "))}</span></li>`;
+    }).join("");
+    out += `<section class="card"><h2>${esc(g.name || "Classement")}</h2><ul>${rows}</ul></section>`;
   }
-
-  document.getElementById("name").placeholder = LEAGUES[current];
-
-  const list = document.getElementById("list");
-  list.innerHTML = "";
-  const items = data[current] || [];
-  items.forEach((name, i) => {
-    const li = document.createElement("li");
-    const span = document.createElement("span");
-    const star = document.createElement("span");
-    star.className = "star";
-    star.textContent = "★";
-    span.append(star, name);
-    const del = document.createElement("button");
-    del.className = "del";
-    del.textContent = "×";
-    del.setAttribute("aria-label", "Retirer " + name);
-    del.onclick = () => { items.splice(i, 1); saveData(); render(); };
-    li.append(span, del);
-    list.appendChild(li);
-  });
-  document.getElementById("empty").textContent =
-    items.length ? "" : "Aucun favori en " + current + " pour le moment.";
+  return out || `<section class="card"><p class="empty">Classement indisponible pour ce championnat.</p></section>`;
 }
 
-document.getElementById("addForm").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const input = document.getElementById("name");
-  const value = input.value.trim();
-  if (!value) return;
-  data[current] = data[current] || [];
-  if (!data[current].includes(value)) data[current].push(value);
-  saveData();
-  input.value = "";
-  render();
+function renderNav() {
+  document.getElementById("leagues").innerHTML = Object.keys(LEAGUES).map(l =>
+    `<button data-league="${esc(l)}" class="${l === state.league ? "on" : ""}">${esc(l)}</button>`).join("");
+  document.getElementById("tabs").innerHTML = TABS.map((t, i) =>
+    `<button data-tab="${i}" class="${i === state.tab ? "on" : ""}">${esc(t)}</button>`).join("");
+}
+
+async function render() {
+  const my = ++token;
+  renderNav();
+  const L = state.league;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const app = document.getElementById("app");
+  const favsEl = document.getElementById("favs");
+  favsEl.innerHTML = state.tab === 0 ? favsCard(L) : "";
+  app.innerHTML = '<p class="empty">Chargement…</p>';
+
+  try {
+    let html = "";
+    if (state.tab === 0) {
+      const evs = await loadEvents(L, today, addDays(today, 14));
+      const mine = evs.filter(e => e.cs.some(c => isFav(c.name, L)) || isFav(e.name, L));
+      html = listCard("Mes matchs à venir (14 jours)", mine, L, "Aucun match de vos favoris dans les 14 prochains jours.");
+    } else if (state.tab === 1) {
+      const evs = await loadEvents(L, today, today);
+      html = listCard("Aujourd'hui", evs, L, "Aucun match aujourd'hui.");
+    } else if (state.tab === 2) {
+      const evs = await loadEvents(L, addDays(today, 1), addDays(today, 7));
+      html = listCard("Calendrier : 7 prochains jours", evs, L, "Rien de prévu dans les 7 prochains jours.");
+    } else if (state.tab === 3) {
+      const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, -1));
+      const played = evs.filter(e => e.state === "post").reverse();
+      html = listCard("Résultats : saison en cours", played, L, "Aucun résultat pour la saison en cours.");
+    } else {
+      html = await standingsHTML(L);
+    }
+    if (my !== token) return;
+    app.innerHTML = html;
+  } catch (err) {
+    if (my !== token) return;
+    app.innerHTML = `<section class="card"><p class="empty">Données indisponibles pour ${esc(L)} : ${esc(err.message)}. La source peut être momentanément inaccessible. Réessayez plus tard.</p></section>`;
+  }
+  attachHandlers();
+}
+
+function attachHandlers() {
+  const form = document.getElementById("addForm");
+  if (form) form.addEventListener("submit", e => {
+    e.preventDefault();
+    const input = document.getElementById("favInput");
+    const v = input.value.trim();
+    if (!v) return;
+    favs[state.league] = favs[state.league] || [];
+    if (!favs[state.league].includes(v)) favs[state.league].push(v);
+    saveFavs();
+    render();
+  });
+  document.querySelectorAll("#favs .del").forEach(btn => btn.addEventListener("click", () => {
+    favs[state.league].splice(+btn.dataset.i, 1);
+    saveFavs();
+    render();
+  }));
+}
+
+document.getElementById("leagues").addEventListener("click", e => {
+  const b = e.target.closest("button[data-league]");
+  if (b) { state.league = b.dataset.league; render(); }
+});
+document.getElementById("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-tab]");
+  if (b) { state.tab = +b.dataset.tab; render(); }
 });
 
 render();
