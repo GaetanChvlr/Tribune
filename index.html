@@ -93,7 +93,7 @@ table.pl td.pn{padding-left:8px;font-weight:600;white-space:nowrap;overflow:hidd
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.10</div>
+<div class="ver">v1.11</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -166,7 +166,8 @@ function parseEvent(ev) {
     date: new Date(ev.date),
     cs,
     state: t.state || "",
-    detail: t.shortDetail || t.detail || ""
+    detail: t.shortDetail || t.detail || "",
+    stype: ev.season?.type ?? null // 1 = présaison, 2 = saison régulière, 3 = séries
   };
 }
 
@@ -503,7 +504,7 @@ async function render(opts = {}) {
         html = listCard("Calendrier : 7 prochains jours", evs, "Rien de prévu dans les 7 prochains jours.");
       } else if (state.tab === "results") {
         const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, -1));
-        const played = evs.filter(e => e.state === "post").reverse();
+        const played = evs.filter(e => e.state === "post" && e.stype !== 1).reverse();
         let teams = [];
         try { teams = await loadTeams(L); } catch (e) { teams = []; }
         const shown = played.filter(e => !state.teamFilter || e.cs.some(c => c.name === state.teamFilter));
