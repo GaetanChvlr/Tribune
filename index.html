@@ -134,6 +134,8 @@ table.qt th,table.qt td{padding:8px 4px;text-align:center;border-bottom:1px soli
 table.qt th{text-align:left;font-weight:500;white-space:nowrap}
 table.qt th.win{font-weight:700}
 table.qt th img{width:20px;height:20px;object-fit:contain;vertical-align:middle;margin-right:6px}
+.lsoons{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.lsoon{border:0;border-radius:14px;padding:12px;background:var(--card);color:var(--text);font:inherit;font-size:14px;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 </style>
 </head>
 <body>
@@ -146,7 +148,7 @@ table.qt th img{width:20px;height:20px;object-fit:contain;vertical-align:middle;
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.36</div>
+<div class="ver">v1.37</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -191,15 +193,31 @@ let players = loadPlayers();     // joueurs favoris
 let token = 0;
 const LANDING = [
   {key: "NBA", sub: "Matchs, classements et statistiques des joueurs", logo: "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png"},
-  {key: "F1", sub: "Programme, résultats, pilotes et écuries", logo: "https://a.espncdn.com/i/teamlogos/leagues/500/f1.png"}
+  {key: "F1", sub: "Programme, résultats, pilotes et écuries", logo: "https://a.espncdn.com/i/teamlogos/leagues/500/f1.png"},
+  {key: "Ligue 1", group: "Football", soon: true},
+  {key: "Ligue 2", group: "Football", soon: true},
+  {key: "Ligue 3", group: "Football", soon: true},
+  {key: "Ligue des Champions", group: "Football", soon: true},
+  {key: "Europa League", group: "Football", soon: true},
+  {key: "National 2", group: "Rugby", soon: true},
+  {key: "Fédérale 3", group: "Rugby", soon: true},
+  {key: "Excellence B", group: "Rugby", soon: true}
 ];
 function landingHTML() {
-  return `<div class="landing">${LANDING.map(l => `<button class="lcard" data-pick="${esc(l.key)}">
-    <img src="${esc(l.logo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+  const card = l => `<button class="lcard" data-pick="${esc(l.key)}">
+    ${l.logo ? `<img src="${esc(l.logo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ""}
     <span class="lfb">${esc(l.key)}</span>
     <span><strong>${esc(l.key)}</strong><span class="sub">${esc(l.sub)}</span></span>
-  </button>`).join("")}</div>`;
+  </button>`;
+  const main = LANDING.filter(l => !l.soon);
+  const soon = LANDING.filter(l => l.soon);
+  const groups = [...new Set(soon.map(l => l.group))];
+  return `<div class="landing">${main.map(card).join("")}</div>`
+    + groups.map(g => `<h3 class="sub-h">${esc(g)}</h3><div class="lsoons">${soon.filter(l => l.group === g).map(l =>
+      `<button class="lsoon" data-soon="${esc(l.key)}">${esc(l.key)}</button>`).join("")}</div>`).join("")
+    + '<p id="soonMsg" class="meta" style="min-height:20px;text-align:center;margin-top:12px"></p>';
 }
+
 let refreshTimer = null;
 let liveNow = false;
 let RANKS = new Map(); // nom d'équipe -> {seed, conf}
@@ -1215,6 +1233,12 @@ async function render(opts = {}) {
 // Gestion des clics, formulaires et filtres : écouteurs posés une seule fois
 const appEl = document.getElementById("app");
 appEl.addEventListener("click", e => {
+  const soon = e.target.closest("[data-soon]");
+  if (soon) {
+    const m = document.getElementById("soonMsg");
+    if (m) m.textContent = soon.dataset.soon + " : bientôt disponible";
+    return;
+  }
   const pick = e.target.closest("[data-pick]");
   if (pick) {
     state.league = pick.dataset.pick;
