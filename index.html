@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tribune">
+<meta name="theme-color" content="#0f172a">
+<link rel="manifest" href="manifest.json">
+<title>Tribune</title>
+<style>
+:root{color-scheme:light dark;--bg:#f8fafc;--card:#ffffff;--text:#0f172a;--muted:#64748b;--accent:#2563eb;--star:#f59e0b}
+@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--accent:#60a5fa}}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text);padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom);min-height:100vh}
+header{padding:16px 0 4px}
+h1{margin:0;font-size:28px}
+.sub{color:var(--muted);font-size:14px;margin-top:4px}
+nav{display:flex;gap:8px;overflow-x:auto;padding:12px 0}
+nav button{flex:none;border:0;border-radius:999px;padding:8px 14px;background:var(--card);color:var(--text);font-size:14px}
+nav button.on{background:var(--accent);color:#fff}
+.card{background:var(--card);border-radius:16px;padding:16px;margin:12px 0}
+form{display:flex;gap:8px}
+input{flex:1;min-width:0;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid #cbd5e1;background:transparent;color:var(--text)}
+button.add{border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:#fff;font-size:15px}
+ul{list-style:none;padding:0;margin:8px 0 0}
+li{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #94a3b833}
+li:last-child{border-bottom:0}
+.star{color:var(--star);font-size:18px;margin-right:6px}
+.del{border:0;background:none;color:var(--muted);font-size:22px;padding:0 4px}
+.empty{color:var(--muted);font-size:14px;margin:8px 0 0}
+h2{font-size:17px;margin:0 0 6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Tribune</h1>
+  <div class="sub">Vos équipes et pilotes, suivis à votre façon</div>
+</header>
+
+<nav id="tabs"></nav>
+
+<section class="card">
+  <h2>Mes favoris</h2>
+  <form id="addForm">
+    <input id="name" autocomplete="off" required>
+    <button class="add" type="submit">Ajouter</button>
+  </form>
+  <ul id="list"></ul>
+  <p class="empty" id="empty"></p>
+</section>
+
+<section class="card">
+  <h2>Résultats</h2>
+  <p class="empty">Les scores et calendriers seront branchés sur une source de données à l'étape suivante.</p>
+</section>
+
+<script>
+const LEAGUES = {
+  "Ligue 1": "ex. Paris Saint-Germain",
+  "NBA": "ex. Boston Celtics",
+  "Top 14": "ex. Stade Toulousain",
+  "F1": "ex. Charles Leclerc"
+};
+const KEY = "tribune-favoris";
+let current = Object.keys(LEAGUES)[0];
+let data = loadData();
+
+function loadData() {
+  try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; }
+}
+function saveData() {
+  try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
+}
+
+function render() {
+  const tabs = document.getElementById("tabs");
+  tabs.innerHTML = "";
+  for (const league of Object.keys(LEAGUES)) {
+    const b = document.createElement("button");
+    b.textContent = league;
+    if (league === current) b.className = "on";
+    b.onclick = () => { current = league; render(); };
+    tabs.appendChild(b);
+  }
+
+  document.getElementById("name").placeholder = LEAGUES[current];
+
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  const items = data[current] || [];
+  items.forEach((name, i) => {
+    const li = document.createElement("li");
+    const span = document.createElement("span");
+    const star = document.createElement("span");
+    star.className = "star";
+    star.textContent = "★";
+    span.append(star, name);
+    const del = document.createElement("button");
+    del.className = "del";
+    del.textContent = "×";
+    del.setAttribute("aria-label", "Retirer " + name);
+    del.onclick = () => { items.splice(i, 1); saveData(); render(); };
+    li.append(span, del);
+    list.appendChild(li);
+  });
+  document.getElementById("empty").textContent =
+    items.length ? "" : "Aucun favori en " + current + " pour le moment.";
+}
+
+document.getElementById("addForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = document.getElementById("name");
+  const value = input.value.trim();
+  if (!value) return;
+  data[current] = data[current] || [];
+  if (!data[current].includes(value)) data[current].push(value);
+  saveData();
+  input.value = "";
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
