@@ -163,7 +163,7 @@ table.ftbl th:nth-child(n+3),table.ftbl td:nth-child(n+3){text-align:center}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.58</div>
+<div class="ver">v1.59</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -480,6 +480,31 @@ function matchHTML(e, abbr = false, big = false) {
   </div>`;
 }
 
+// Football : numéro de journée déduit du nombre de matchs joués de chaque équipe (classement),
+// quand l'API ne donne pas week.number dans la plage demandée.
+function inferMatchdays(evs, gp) {
+  const byTeam = new Map();
+  for (const e of evs) for (const c of e.cs) {
+    if (!byTeam.has(c.name)) byTeam.set(c.name, []);
+    byTeam.get(c.name).push(e);
+  }
+  const idx = new Map(); // id de match -> numéros de journée possibles
+  const put = (id, n) => { if (!idx.has(id)) idx.set(id, []); idx.get(id).push(n); };
+  for (const [name, list] of byTeam) {
+    const P = gp.get(name);
+    if (!Number.isFinite(P)) continue;
+    list.sort((a, b) => a.date - b.date);
+    const done = list.filter(e => e.state === "post");
+    const todo = list.filter(e => e.state !== "post");
+    done.forEach((e, i) => put(e.id, P - (done.length - 1 - i)));
+    todo.forEach((e, j) => put(e.id, P + 1 + j));
+  }
+  for (const e of evs) {
+    if (!e.wk && idx.get(e.id)) e.wk = Math.max(...idx.get(e.id));
+  }
+  return evs;
+}
+
 // Football : calendrier et résultats par journée (ESPN : week.number), avec filtre de journée.
 // Par défaut : calendrier = journée en cours (première journée non terminée), résultats = journée précédente.
 async function footCalHTML(L, today) {
@@ -487,7 +512,9 @@ async function footCalHTML(L, today) {
   // Fenêtre de 6 semaines autour d'aujourd'hui : une plage plus longue fait échouer l'API
   // et déclenche le repli jour par jour (très lent)
   const evs = await loadEvents(L, addDays(today, -21), addDays(today, 21));
-  const season = evs.filter(e => e.stype !== 1 && e.wk);
+  const gp = new Map(); // matchs joués par équipe (classement)
+  try { for (const g of await getStandings(L)) for (const en of g.entries) gp.set(en.name, Number(en.st.gamesPlayed)); } catch (e) {}
+  const season = inferMatchdays(evs.filter(e => e.stype !== 1), gp).filter(e => e.wk);
   const weeks = [...new Set(season.map(e => e.wk))].sort((a, b) => a - b);
   const pending = season.filter(e => e.state !== "post").map(e => e.wk);
   const current = pending.length ? Math.min(...pending) : (weeks.at(-1) ?? 1);
