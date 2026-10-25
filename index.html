@@ -31,29 +31,39 @@ li:last-child{border-bottom:0}
 .meta{color:var(--muted);font-size:13px;margin-top:4px}
 .live{color:var(--live);font-weight:700;font-size:12px;margin-right:6px}
 h2{font-size:17px;margin:0 0 6px}
+h3.sub-h{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:16px 0 0}
 b{font-variant-numeric:tabular-nums}
 .ver{position:fixed;left:10px;bottom:calc(env(safe-area-inset-bottom) + 4px);font-size:11px;color:var(--muted);opacity:.7}
 
-/* Matchs : logos sur une ligne, noms en dessous */
+/* Matchs : logos sur une ligne, noms (une ligne) puis rang en dessous */
 .match{padding:12px 0;border-bottom:1px solid #94a3b833;text-align:center}
 .match:last-child{border-bottom:0}
 .row{display:flex;align-items:center;justify-content:center}
-.side{width:110px;display:flex;justify-content:center;align-items:center;height:44px}
+.side{width:130px;display:flex;justify-content:center;align-items:center;height:44px}
 .side img{width:40px;height:40px;object-fit:contain}
-.nm2{width:110px;font-size:12px;color:var(--muted);text-align:center;line-height:1.2;margin-top:4px}
-.mid{width:70px;font-size:14px}
-.mid b{font-size:18px}
+.nm2{width:130px;font-size:12px;color:var(--muted);text-align:center;line-height:1.3;margin-top:4px}
+.nm2 .tn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nm2 .rk{white-space:nowrap}
+.mid{min-width:72px;padding:0 6px;font-size:14px;white-space:nowrap}
+.mid b{font-size:17px}
 
 /* Classement */
 .legend{font-size:12px;color:var(--muted);margin:6px 0 0}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 4px 0 10px;vertical-align:middle}
 .dot.direct{background:var(--direct)}
 .dot.playin{background:var(--playin)}
+details.conf{background:var(--bg);border-radius:12px;margin-top:10px;padding:0 12px}
+details.conf summary{cursor:pointer;font-weight:600;padding:12px 0;list-style:none}
+details.conf summary::-webkit-details-marker{display:none}
+details.conf summary::after{content:"▾";float:right;color:var(--muted)}
+details.conf[open] summary::after{content:"▴"}
+details.conf ul{margin:0 0 8px}
 li.st{padding:9px 8px;border-radius:10px;margin-top:4px;border-bottom:0}
 li.st.direct{background:#16a34a22;box-shadow:inset 3px 0 0 var(--direct)}
 li.st.playin{background:#f59e0b22;box-shadow:inset 3px 0 0 var(--playin)}
 .rank{width:24px;color:var(--muted);font-variant-numeric:tabular-nums}
 .nm{flex:1;display:flex;align-items:center;gap:6px;min-width:0}
+.nm span.tn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .logo{width:24px;height:24px;object-fit:contain;flex:none}
 </style>
 </head>
@@ -67,7 +77,7 @@ li.st.playin{background:#f59e0b22;box-shadow:inset 3px 0 0 var(--playin)}
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.3</div>
+<div class="ver">v1.4</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -83,11 +93,10 @@ const LEAGUES = {
 };
 const TABS = [
   {key: "mine", label: "Mes matchs"},
-  {key: "favs", label: "Favoris"},
-  {key: "today", label: "Aujourd'hui"},
   {key: "cal", label: "Calendrier"},
   {key: "results", label: "Résultats"},
-  {key: "standings", label: "Classement"}
+  {key: "standings", label: "Classement"},
+  {key: "favs", label: "Favoris"}
 ];
 
 const state = { league: "NBA", tab: "mine" };
@@ -213,12 +222,11 @@ async function loadRanks(league) {
   return { map, top };
 }
 
-// Nom + rang entre parenthèses, ex. « Boston Celtics (1er E) »
-function teamLabel(name) {
+// Nom sur une ligne, rang en dessous, ex. « (1er E) »
+function teamCell(name) {
   const r = RANKS.get(name);
-  if (!r) return esc(name);
-  const ord = r.seed === 1 ? "er" : "e";
-  return `${esc(name)} (${r.seed}${ord}${r.conf ? " " + r.conf : ""})`;
+  const rank = r ? `(${r.seed}${r.seed === 1 ? "er" : "e"}${r.conf ? " " + r.conf : ""})` : "";
+  return `<div class="nm2"><div class="tn">${esc(name)}</div>${rank ? `<div class="rk">${esc(rank)}</div>` : ""}</div>`;
 }
 
 function isFav(text, league) {
@@ -226,7 +234,7 @@ function isFav(text, league) {
   return (favs[league] || []).some(f => t.includes(f.toLowerCase()));
 }
 
-function matchHTML(e, league) {
+function matchHTML(e) {
   const when = e.date.toLocaleString("fr-FR", {weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
 
   // Événement sans deux équipes (ex. course F1) : affichage simple
@@ -241,18 +249,17 @@ function matchHTML(e, league) {
   const live = e.state === "in" ? '<span class="live">EN DIRECT</span>' : "";
   const status = pre ? when : (esc(e.detail) || when);
   const side = t => `<div class="side">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : ""}</div>`;
-  const nm = t => `<div class="nm2">${teamLabel(t.name)}</div>`;
 
   return `<div class="match">
     <div class="row">${side(a)}<div class="mid">${mid}</div>${side(b)}</div>
-    <div class="row">${nm(a)}<div class="mid"></div>${nm(b)}</div>
+    <div class="row">${teamCell(a.name)}<div class="mid"></div>${teamCell(b.name)}</div>
     <div class="meta">${live}${status}</div>
   </div>`;
 }
 
-function listCard(title, evs, league, emptyMsg) {
+function listCard(title, evs, emptyMsg) {
   const body = evs.length
-    ? evs.map(e => matchHTML(e, league)).join("")
+    ? evs.map(e => matchHTML(e)).join("")
     : `<p class="empty">${esc(emptyMsg)}</p>`;
   return `<section class="card"><h2>${esc(title)}</h2>${body}</section>`;
 }
@@ -295,19 +302,19 @@ function favsCard(league, teams) {
 async function standingsHTML(league) {
   const groups = await getStandings(league);
   const legend = `<p class="legend"><span class="dot direct"></span>Playoffs directs (1 à 6)<span class="dot playin"></span>Play-in (7 à 10)</p>`;
-  let out = "";
+  let out = legend;
   for (const g of groups) {
     const rows = g.entries.map(en => {
       const cls = en.seed <= 6 ? "direct" : en.seed <= 10 ? "playin" : "";
       const logo = en.logo ? `<img class="logo" src="${esc(en.logo)}" alt="">` : "";
-      const parts = [];
-      if (en.st.wins !== undefined) parts.push(`${en.st.wins}V ${en.st.losses ?? ""}D`);
-      if (en.st.points !== undefined) parts.push(`${en.st.points} pts`);
-      return `<li class="st ${cls}"><span class="rank">${esc(en.seed)}</span><span class="nm">${logo}${esc(en.name)}</span><span class="meta">${esc(parts.join(" · "))}</span></li>`;
+      const record = en.st.wins !== undefined ? `${esc(en.st.wins)}V ${esc(en.st.losses ?? "")}D` : "";
+      return `<li class="st ${cls}"><span class="rank">${esc(en.seed)}</span><span class="nm">${logo}<span class="tn">${esc(en.name)}</span></span><span class="meta">${record}</span></li>`;
     }).join("");
-    out += `<section class="card"><h2>${esc(g.name)}</h2>${legend}<ul>${rows}</ul></section>`;
+    out += `<details class="conf"><summary>${esc(g.name)}</summary><ul>${rows}</ul></details>`;
   }
-  return out || `<section class="card"><p class="empty">Classement indisponible pour ce championnat.</p></section>`;
+  return groups.length
+    ? `<section class="card">${out}</section>`
+    : `<section class="card"><p class="empty">Classement indisponible pour ce championnat.</p></section>`;
 }
 
 function renderNav() {
@@ -315,6 +322,11 @@ function renderNav() {
     `<button data-league="${esc(l)}" class="${l === state.league ? "on" : ""}">${esc(l)}</button>`).join("");
   document.getElementById("tabs").innerHTML = TABS.map(t =>
     `<button data-tab="${t.key}" class="${t.key === state.tab ? "on" : ""}">${esc(t.label)}</button>`).join("");
+}
+
+function dayTitle(d) {
+  const s = d.toLocaleDateString("fr-FR", {weekday: "long", day: "numeric", month: "long"});
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 async function render() {
@@ -335,27 +347,37 @@ async function render() {
 
     let html = "";
     if (state.tab === "mine") {
-      // 3 prochains jours : favoris + grosses affiches (deux équipes du top 6)
+      // 3 prochains jours, séparés par jour : favoris, puis grosses affiches
       const evs = await loadEvents(L, today, addDays(today, 2));
-      const mine = evs.filter(e =>
-        e.cs.some(c => isFav(c.name, L)) || isFav(e.name, L) ||
-        (e.cs.length === 2 && e.cs.every(c => TOP.has(c.name))));
-      html = listCard("Mes matchs et grosses affiches (3 jours)", mine, L,
-        "Aucun match de vos favoris ni grosse affiche dans les 3 prochains jours.");
+      const isMine = e => e.cs.some(c => isFav(c.name, L)) || isFav(e.name, L);
+      const isGrosse = e => e.cs.length === 2 && e.cs.every(c => TOP.has(c.name));
+      const days = {};
+      for (const e of evs) {
+        const k = e.date.toDateString();
+        (days[k] = days[k] || { date: e.date, evs: [] }).evs.push(e);
+      }
+      for (const k of Object.keys(days)) {
+        const { date, evs: dayEvs } = days[k];
+        const favM = dayEvs.filter(isMine);
+        const grosse = dayEvs.filter(e => !isMine(e) && isGrosse(e));
+        if (!favM.length && !grosse.length) continue;
+        html += `<section class="card"><h2>${esc(dayTitle(date))}</h2>
+          <h3 class="sub-h">Mes favoris</h3>${favM.length ? favM.map(matchHTML).join("") : '<p class="empty">Aucun match de vos favoris.</p>'}
+          <h3 class="sub-h">Grosses affiches</h3>${grosse.length ? grosse.map(matchHTML).join("") : '<p class="empty">Aucune grosse affiche.</p>'}
+        </section>`;
+      }
+      if (!html) html = `<section class="card"><p class="empty">Aucun match de vos favoris ni grosse affiche dans les 3 prochains jours.</p></section>`;
+    } else if (state.tab === "cal") {
+      const evs = await loadEvents(L, addDays(today, 1), addDays(today, 7));
+      html = listCard("Calendrier : 7 prochains jours", evs, "Rien de prévu dans les 7 prochains jours.");
+    } else if (state.tab === "results") {
+      const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, -1));
+      const played = evs.filter(e => e.state === "post").reverse();
+      html = listCard("Résultats : saison en cours", played, "Aucun résultat pour la saison en cours.");
     } else if (state.tab === "favs") {
       let teams = [];
       try { teams = await loadTeams(L); } catch (e) { teams = []; }
       html = favsCard(L, teams);
-    } else if (state.tab === "today") {
-      const evs = await loadEvents(L, today, today);
-      html = listCard("Aujourd'hui", evs, L, "Aucun match aujourd'hui.");
-    } else if (state.tab === "cal") {
-      const evs = await loadEvents(L, addDays(today, 1), addDays(today, 7));
-      html = listCard("Calendrier : 7 prochains jours", evs, L, "Rien de prévu dans les 7 prochains jours.");
-    } else if (state.tab === "results") {
-      const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, -1));
-      const played = evs.filter(e => e.state === "post").reverse();
-      html = listCard("Résultats : saison en cours", played, L, "Aucun résultat pour la saison en cours.");
     } else {
       html = await standingsHTML(L);
     }
