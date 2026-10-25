@@ -4,7 +4,7 @@
 //   node scripts/notify.mjs finals   → score des matchs terminés (favoris et grosses affiches)
 // Le nom du canal ntfy est dans le secret GitHub NTFY_TOPIC (jamais dans le code).
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const TOPIC = process.env.NTFY_TOPIC || "";
 const MODE = process.argv[2];
@@ -123,14 +123,45 @@ async function finals() {
 
   if (!seeded || newIds.length) {
     const ids = [...known, ...newIds].slice(-400);
-    writeFileSync(STATE, JSON.stringify({ ids }, null, 2) + "\n");
+    writeState({ ...readState(), ids });
     console.log(seeded ? `${newIds.length} match(s) terminé(s) traité(s).` : `Initialisation : ${newIds.length} match(s) enregistré(s), aucun envoi.`);
   } else {
     console.log("Aucun nouveau match terminé.");
   }
 }
 
-const run = MODE === "mvp" ? mvp : finals;
+// État des notifications (data/notified.json), partagé entre NBA et F1
+function readState() {
+  try { return existsSync(STATE) ? JSON.parse(readFileSync(STATE, "utf8")) : {}; } catch (e) { return {}; }
+}
+function writeState(obj) {
+  mkdirSync("data", { recursive: true });
+  writeFileSync(STATE, JSON.stringify(obj, null, 2) + "\n");
+}
+
+// F1 : une notification à la fin de chaque Grand Prix
+async function f1Finals() {
+  const st = readState();
+  const seeded = Array.isArray(st.f1ids);
+  const seen = new Set(st.f1ids || []);
+  const j = await getJSON("https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard");
+  const found = (j.events || []).filter(ev => ev.status?.type?.state === "post" && !seen.has(ev.id));
+  const newIds = [];
+  for (const ev of found) {
+    newIds.push(ev.id);
+    if (!seeded) continue;
+    try {
+      await send("Tribune - F1", `Découvre les résultats de la course : ${ev.name}`);
+    } catch (e) {
+      console.error("Échec d'envoi :", e.message);
+    }
+  }
+  if (!seeded || newIds.length) {
+    writeState({ ...readState(), f1ids: [...seen, ...newIds].slice(-200) });
+  }
+}
+
+const run = MODE === "mvp" ? mvp : async () => { await finals(); await f1Finals(); };
 run().catch(e => {
   console.error(e);
   process.exit(1);
