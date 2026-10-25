@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.json">
 <title>Tribune</title>
 <style>
-:root{color-scheme:light dark;--bg:#f1f5f9;--card:#ffffff;--text:#0f172a;--muted:#64748b;--accent:#0369a1;--accent2:#0369a1;--live:#dc2626;--direct:#15803d;--playin:#c2410c}
-@media (prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--accent:#38bdf8;--accent2:#38bdf8;--live:#f87171;--direct:#4ade80;--playin:#fb923c}}
+:root{color-scheme:light dark;--bg:#f4f4f5;--card:#ffffff;--text:#111111;--muted:#71717a;--accent:#111111;--on-accent:#ffffff;--accent2:#111111;--live:#dc2626;--direct:#15803d;--playin:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#0a0a0a;--card:#18181b;--text:#f4f4f5;--muted:#a1a1aa;--accent:#f4f4f5;--on-accent:#0a0a0a;--accent2:#f4f4f5;--live:#f87171;--direct:#4ade80;--playin:#fb923c}}
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text);padding:env(safe-area-inset-top) 16px 40px;min-height:100vh}
 header{padding:16px 0 4px}
@@ -19,12 +19,12 @@ h1{margin:0;font-size:30px;font-weight:800;color:var(--text)}
 .nav{display:flex;gap:8px;overflow-x:auto;padding:10px 0 0;scrollbar-width:none}
 .nav button{flex:none;border:0;border-radius:999px;padding:8px 14px;background:var(--card);color:var(--text);font-size:14px}
 .nav button{font-weight:600}
-.nav button.on{background:var(--accent);color:#fff}
+.nav button.on{background:var(--accent);color:var(--on-accent)}
 .card{background:var(--card);border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 1px 3px rgba(15,23,42,.08)}
 .card h2{color:var(--text)}
 form{display:flex;gap:8px}
 input,select{flex:1;min-width:0;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid #cbd5e1;background:transparent;color:var(--text)}
-button.add{border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:#fff;font-size:15px}
+button.add{border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:var(--on-accent);font-size:15px}
 ul{list-style:none;padding:0;margin:8px 0 0}
 li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #94a3b833}
 li:last-child{border-bottom:0}
@@ -74,7 +74,14 @@ details.conf ul{margin:0 0 8px}
 li.st{padding:9px 8px;border-radius:10px;margin-top:4px;border-bottom:0}
 li.st.direct{background:#16a34a22;box-shadow:inset 3px 0 0 var(--direct)}
 li.st.playin{background:#f59e0b22;box-shadow:inset 3px 0 0 var(--playin)}
-li.st.fav{background:#0369a122;box-shadow:inset 3px 0 0 var(--accent)}
+li.st.fav{background:#71717a22;box-shadow:inset 3px 0 0 var(--text)}
+.landing{display:grid;gap:14px;margin-top:20px}
+.lcard{display:flex;align-items:center;gap:16px;width:100%;background:var(--card);border:0;border-radius:20px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);color:var(--text);text-align:left;font:inherit;cursor:pointer}
+.lcard img,.lfb{width:64px;height:64px;object-fit:contain;flex:none}
+.lfb{display:none;align-items:center;justify-content:center;border-radius:16px;background:var(--text);color:var(--card);font-weight:800;font-size:18px}
+.lcard strong{display:block;font-size:20px}
+.lcard .sub{display:block;color:var(--muted);font-size:14px;margin-top:2px}
+.navback{flex:none;border:0;border-radius:999px;padding:8px 12px;background:var(--card);color:var(--text);font-size:16px}
 .race{text-align:left;padding:12px 0;border-bottom:1px solid #94a3b833}
 .race:last-child{border-bottom:0}
 .rank{width:24px;color:var(--muted);font-variant-numeric:tabular-nums}
@@ -139,7 +146,7 @@ table.qt th img{width:20px;height:20px;object-fit:contain;vertical-align:middle;
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.33</div>
+<div class="ver">v1.34</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -176,12 +183,23 @@ const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 
 const state = {
   league: "NBA", tab: "home", detail: null, teamFilter: "",
-  homePeriod: "saison", calTeamFilter: "", matchView: "cal", raceId: null,
+  screen: "landing", homePeriod: "saison", calTeamFilter: "", matchView: "cal", raceId: null,
   statsView: "leaders", statsPeriod: "nuit", statsKey: ""
 };
 let favs = loadFavs();           // équipes par championnat
 let players = loadPlayers();     // joueurs favoris
 let token = 0;
+const LANDING = [
+  {key: "NBA", sub: "Matchs, classements et statistiques des joueurs", logo: "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png"},
+  {key: "F1", sub: "Programme, résultats, pilotes et écuries", logo: "https://a.espncdn.com/i/teamlogos/leagues/500/f1.png"}
+];
+function landingHTML() {
+  return `<div class="landing">${LANDING.map(l => `<button class="lcard" data-pick="${esc(l.key)}">
+    <img src="${esc(l.logo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+    <span class="lfb">${esc(l.key)}</span>
+    <span><strong>${esc(l.key)}</strong><span class="sub">${esc(l.sub)}</span></span>
+  </button>`).join("")}</div>`;
+}
 let refreshTimer = null;
 let liveNow = false;
 let RANKS = new Map(); // nom d'équipe -> {seed, conf}
@@ -1089,7 +1107,7 @@ function mviewNav() {
 }
 
 function renderNav() {
-  document.getElementById("leagues").innerHTML = Object.keys(LEAGUES).map(l =>
+  document.getElementById("leagues").innerHTML = `<button class="navback" data-landing aria-label="Accueil">⌂</button>` + Object.keys(LEAGUES).map(l =>
     `<button data-league="${esc(l)}" class="${l === state.league ? "on" : ""}">${esc(l)}</button>`).join("");
   document.getElementById("tabs").innerHTML = TABS.map(t =>
     `<button data-tab="${t.key}" class="${!state.detail && t.key === state.tab ? "on" : ""}">${esc(t.label)}</button>`).join("");
@@ -1119,6 +1137,14 @@ function scheduleRefresh() {
 }
 
 async function render(opts = {}) {
+  if (state.screen === "landing") {
+    clearTimeout(refreshTimer);
+    document.getElementById("leagues").innerHTML = "";
+    document.getElementById("tabs").style.display = "none";
+    document.getElementById("app").innerHTML = landingHTML();
+    return;
+  }
+  document.getElementById("tabs").style.display = "";
   const my = ++token;
   liveNow = false;
   renderNav();
@@ -1180,6 +1206,15 @@ async function render(opts = {}) {
 // Gestion des clics, formulaires et filtres : écouteurs posés une seule fois
 const appEl = document.getElementById("app");
 appEl.addEventListener("click", e => {
+  const pick = e.target.closest("[data-pick]");
+  if (pick) {
+    state.league = pick.dataset.pick;
+    state.screen = "app";
+    state.tab = "home";
+    state.detail = null; state.raceId = null; state.teamFilter = ""; state.calTeamFilter = "";
+    render();
+    return;
+  }
   if (e.target.closest("[data-back]")) { state.detail = null; render(); return; }
   const m = e.target.closest(".match[data-id]");
   if (m) { state.detail = m.dataset.id; render(); return; }
@@ -1247,6 +1282,7 @@ appEl.addEventListener("toggle", e => {
 }, true);
 
 document.getElementById("leagues").addEventListener("click", e => {
+  if (e.target.closest("[data-landing]")) { state.screen = "landing"; render(); return; }
   const b = e.target.closest("button[data-league]");
   if (b) { state.league = b.dataset.league; state.detail = null; state.teamFilter = ""; state.calTeamFilter = ""; render(); }
 });
