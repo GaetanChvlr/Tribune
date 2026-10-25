@@ -9,18 +9,18 @@
 <link rel="manifest" href="manifest.json">
 <title>Tribune</title>
 <style>
-:root{color-scheme:light dark;--bg:#eef2ff;--card:#ffffff;--text:#1e1b4b;--muted:#6b6f9c;--accent:#7c3aed;--accent2:#ec4899;--live:#e11d48;--direct:#059669;--playin:#f97316}
-@media (prefers-color-scheme:dark){:root{--bg:#0b0a1f;--card:#1a1838;--text:#f5f3ff;--muted:#a5a3d1;--accent:#a78bfa;--accent2:#f472b6;--live:#fb7185;--direct:#34d399;--playin:#fb923c}}
+:root{color-scheme:light dark;--bg:#f1f5f9;--card:#ffffff;--text:#0f172a;--muted:#64748b;--accent:#0369a1;--accent2:#0369a1;--live:#dc2626;--direct:#15803d;--playin:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--accent:#38bdf8;--accent2:#38bdf8;--live:#f87171;--direct:#4ade80;--playin:#fb923c}}
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text);padding:env(safe-area-inset-top) 16px 40px;min-height:100vh}
 header{padding:16px 0 4px}
-h1{margin:0;font-size:32px;font-weight:800;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+h1{margin:0;font-size:30px;font-weight:800;color:var(--text)}
 .sub{color:var(--muted);font-size:14px;margin-top:4px}
 .nav{display:flex;gap:8px;overflow-x:auto;padding:10px 0 0;scrollbar-width:none}
 .nav button{flex:none;border:0;border-radius:999px;padding:8px 14px;background:var(--card);color:var(--text);font-size:14px}
 .nav button{font-weight:600}
-.nav button.on{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 4px 12px rgba(124,58,237,.35)}
-.card{background:var(--card);border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 6px 24px rgba(88,28,135,.10)}
+.nav button.on{background:var(--accent);color:#fff}
+.card{background:var(--card);border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 1px 3px rgba(15,23,42,.08)}
 .card h2{color:var(--text)}
 form{display:flex;gap:8px}
 input,select{flex:1;min-width:0;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid #cbd5e1;background:transparent;color:var(--text)}
@@ -58,8 +58,9 @@ b{font-variant-numeric:tabular-nums}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 4px 0 10px;vertical-align:middle}
 .dot.direct{background:var(--direct)}
 .dot.playin{background:var(--playin)}
-details.conf{background:var(--bg);border-radius:12px;margin-top:10px;padding:0 12px}
-details.conf summary{cursor:pointer;font-weight:600;padding:12px 0;list-style:none}
+details.conf{border-top:1px solid #94a3b855;margin:0}
+details.conf:last-child{border-bottom:1px solid #94a3b855}
+details.conf summary{cursor:pointer;font-weight:600;padding:14px 2px;list-style:none;font-size:16px}
 details.conf summary::-webkit-details-marker{display:none}
 details.conf summary::after{content:"▾";float:right;color:var(--muted)}
 details.conf[open] summary::after{content:"▴"}
@@ -71,7 +72,7 @@ li.st.playin{background:#f59e0b22;box-shadow:inset 3px 0 0 var(--playin)}
 .nm{flex:1;display:flex;align-items:center;gap:6px;min-width:0}
 .nm .tn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .logo{width:24px;height:24px;object-fit:contain;flex:none}
-select.filter{display:block;width:100%;margin:4px 0 8px}
+select.filter{display:block;width:100%;height:44px;margin:4px 0 10px;padding:0 36px 0 12px;appearance:none;-webkit-appearance:none;border-radius:12px;border:1px solid #94a3b855;background-color:var(--card);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2364748b' stroke-width='1.6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;color:var(--text)}
 
 /* Accueil : MVP et joueurs favoris */
 .pl-row{padding:10px 0;border-bottom:1px solid #94a3b833}
@@ -113,7 +114,7 @@ table.qt th img{width:20px;height:20px;object-fit:contain;vertical-align:middle;
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.19</div>
+<div class="ver">v1.20</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
