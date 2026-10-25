@@ -9,10 +9,10 @@
 <link rel="manifest" href="manifest.json">
 <title>Tribune</title>
 <style>
-:root{color-scheme:light dark;--bg:#f8fafc;--card:#ffffff;--text:#0f172a;--muted:#64748b;--accent:#2563eb;--star:#f59e0b;--live:#dc2626}
-@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--accent:#60a5fa;--live:#f87171}}
+:root{color-scheme:light dark;--bg:#f8fafc;--card:#ffffff;--text:#0f172a;--muted:#64748b;--accent:#2563eb;--star:#f59e0b;--live:#dc2626;--direct:#16a34a;--playin:#f59e0b}
+@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--muted:#94a3b8;--accent:#60a5fa;--live:#f87171;--direct:#4ade80;--playin:#fbbf24}}
 *{box-sizing:border-box}
-body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text);padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom);min-height:100vh}
+body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text);padding:env(safe-area-inset-top) 16px 40px;min-height:100vh}
 header{padding:16px 0 4px}
 h1{margin:0;font-size:28px}
 .sub{color:var(--muted);font-size:14px;margin-top:4px}
@@ -21,7 +21,7 @@ h1{margin:0;font-size:28px}
 .nav button.on{background:var(--accent);color:#fff}
 .card{background:var(--card);border-radius:16px;padding:16px;margin:12px 0}
 form{display:flex;gap:8px}
-input{flex:1;min-width:0;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid #cbd5e1;background:transparent;color:var(--text)}
+input,select{flex:1;min-width:0;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid #cbd5e1;background:transparent;color:var(--text)}
 button.add{border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:#fff;font-size:15px}
 ul{list-style:none;padding:0;margin:8px 0 0}
 li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #94a3b833}
@@ -29,14 +29,34 @@ li:last-child{border-bottom:0}
 .star{color:var(--star);margin-right:6px}
 .del{border:0;background:none;color:var(--muted);font-size:22px;padding:0 4px}
 .empty{color:var(--muted);font-size:14px;margin:8px 0 0}
-.meta{color:var(--muted);font-size:13px;margin-top:2px}
-.live{color:var(--live);font-weight:700;font-size:12px;margin-left:6px}
-.rank{width:26px;color:var(--muted);font-variant-numeric:tabular-nums}
-.nm{flex:1}
+.meta{color:var(--muted);font-size:13px;margin-top:4px}
+.live{color:var(--live);font-weight:700;font-size:12px;margin-right:6px}
+.tag{background:var(--accent);color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;margin-left:4px}
 h2{font-size:17px;margin:0 0 6px}
 b{font-variant-numeric:tabular-nums}
 .ver{position:fixed;left:10px;bottom:calc(env(safe-area-inset-bottom) + 4px);font-size:11px;color:var(--muted);opacity:.7}
-.logo{width:22px;height:22px;vertical-align:middle;margin-right:6px;object-fit:contain}
+
+/* Matchs : logos sur une ligne, noms en dessous */
+.match{padding:12px 0;border-bottom:1px solid #94a3b833;text-align:center}
+.match:last-child{border-bottom:0}
+.row{display:flex;align-items:center;justify-content:center}
+.side{width:110px;display:flex;justify-content:center;align-items:center;height:44px}
+.side img{width:40px;height:40px;object-fit:contain}
+.nm2{width:110px;font-size:12px;color:var(--muted);text-align:center;line-height:1.2;margin-top:4px}
+.mid{width:70px;font-size:14px}
+.mid b{font-size:18px}
+
+/* Classement */
+.legend{font-size:12px;color:var(--muted);margin:6px 0 0}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 4px 0 10px;vertical-align:middle}
+.dot.direct{background:var(--direct)}
+.dot.playin{background:var(--playin)}
+li.st{padding:9px 8px;border-radius:10px;margin-top:4px;border-bottom:0}
+li.st.direct{background:#16a34a22;box-shadow:inset 3px 0 0 var(--direct)}
+li.st.playin{background:#f59e0b22;box-shadow:inset 3px 0 0 var(--playin)}
+.rank{width:24px;color:var(--muted);font-variant-numeric:tabular-nums}
+.nm{flex:1;display:flex;align-items:center;gap:6px;min-width:0}
+.logo{width:24px;height:24px;object-fit:contain;flex:none}
 </style>
 </head>
 <body>
@@ -50,7 +70,7 @@ b{font-variant-numeric:tabular-nums}
 
 <div id="favs"></div>
 <div id="app"></div>
-<div class="ver">v1.1</div>
+<div class="ver">v1.2</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -80,7 +100,6 @@ function saveFavs() {
 const pad = n => String(n).padStart(2, "0");
 const ymd = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
-const parseYmd = s => new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8));
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 function seasonStart(startMonth) {
@@ -104,6 +123,7 @@ function parseEvent(ev) {
   }));
   const t = ev.status?.type || {};
   return {
+    id: ev.id,
     name: ev.name || "",
     date: new Date(ev.date),
     cs,
@@ -121,21 +141,50 @@ async function loadEvents(league, from, to) {
   const path = LEAGUES[league].path;
   let raw;
   try {
-    // Requête sur la plage entière
     const j = await getJSON(`${SCORES}${path}/scoreboard?dates=${ymd(from)}-${ymd(to)}`);
     raw = j.events || [];
   } catch (e) {
-    // Repli : une requête par jour (plus lent, mais plus robuste)
+    // Repli : une requête par jour
     const days = [];
     for (let d = new Date(from); d <= to; d = addDays(d, 1)) days.push(new Date(d));
     const results = await Promise.allSettled(days.map(d => loadDay(path, d)));
     raw = results.filter(r => r.status === "fulfilled").flatMap(r => r.value);
     if (!raw.length && results.length && results.every(r => r.status === "rejected")) throw e;
   }
-  // Dédoublonnage par identifiant d'événement
   const seen = new Set();
   const unique = raw.filter(ev => (seen.has(ev.id) ? false : seen.add(ev.id)));
   return unique.map(parseEvent).sort((a, b) => a.date - b.date);
+}
+
+// Classement : groupes (conférences) avec rang (seed) par équipe. Mis en cache.
+let standingsCache = {};
+async function getStandings(league) {
+  if (standingsCache[league]) return standingsCache[league];
+  const j = await getJSON(`${STANDINGS}${LEAGUES[league].path}/standings`);
+  const groups = (j.children || []).map(g => ({
+    name: g.name || "Classement",
+    entries: (g.standings?.entries || []).map((en, i) => {
+      const st = Object.fromEntries((en.stats || []).map(s => [s.name, s.displayValue]));
+      const ps = parseInt(st.playoffSeed, 10);
+      return {
+        name: en.team?.displayName || en.athlete?.displayName || "?",
+        logo: en.team?.logos?.[0]?.href || en.team?.logo || "",
+        seed: Number.isFinite(ps) ? ps : i + 1,
+        st
+      };
+    })
+  })).filter(g => g.entries.length);
+  standingsCache[league] = groups;
+  return groups;
+}
+
+// Équipes du top 6 de leur conférence (playoffs directs)
+async function topSix(league) {
+  const set = new Set();
+  for (const g of await getStandings(league)) {
+    for (const en of g.entries) if (en.seed <= 6) set.add(en.name);
+  }
+  return set;
 }
 
 function isFav(text, league) {
@@ -143,21 +192,39 @@ function isFav(text, league) {
   return (favs[league] || []).some(f => t.includes(f.toLowerCase()));
 }
 
-function eventHTML(e, league) {
+function matchHTML(e, league, top) {
   const fav = e.cs.some(c => isFav(c.name, league)) || isFav(e.name, league);
   const when = e.date.toLocaleString("fr-FR", {weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
-  const logo = url => url ? `<img class="logo" src="${esc(url)}" alt="">` : "";
-  const title = e.cs.length === 2
-    ? `${logo(e.cs[0].logo)}${esc(e.cs[0].name)} <b>${esc(e.cs[0].score)} - ${esc(e.cs[1].score)}</b> ${esc(e.cs[1].name)}${logo(e.cs[1].logo)}`
-    : esc(e.name);
-  const live = e.state === "in" ? '<span class="live">EN DIRECT</span>' : "";
-  const status = e.state === "pre" ? when : (esc(e.detail) || when);
-  return `<li>${fav ? '<span class="star">★</span>' : ""}<div class="nm">${title}${live}<div class="meta">${status}</div></div></li>`;
+
+  // Événement sans deux équipes (ex. course F1) : affichage simple
+  if (e.cs.length !== 2) {
+    const status = e.state === "pre" ? when : (esc(e.detail) || when);
+    return `<div class="match">${fav ? '<span class="star">★</span>' : ""}${esc(e.name)}<div class="meta">${status}</div></div>`;
+  }
+
+  const [a, b] = e.cs;
+  const pre = e.state === "pre";
+  const grosse = top.has(a.name) && top.has(b.name);
+  const mid = pre ? "vs" : `<b>${esc(a.score)} - ${esc(b.score)}</b>`;
+  const tags = [
+    e.state === "in" ? '<span class="live">EN DIRECT</span>' : "",
+    fav ? '<span class="star">★</span>' : "",
+    grosse && !fav ? '<span class="tag">Grosse affiche</span>' : ""
+  ].join("");
+  const status = pre ? when : (esc(e.detail) || when);
+  const side = t => `<div class="side">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : ""}</div>`;
+  const nm = t => `<div class="nm2">${esc(t.name)}</div>`;
+
+  return `<div class="match">
+    <div class="row">${side(a)}<div class="mid">${mid}</div>${side(b)}</div>
+    <div class="row">${nm(a)}<div class="mid"></div>${nm(b)}</div>
+    <div class="meta">${tags} ${status}</div>
+  </div>`;
 }
 
-function listCard(title, evs, league, emptyMsg) {
+function listCard(title, evs, league, emptyMsg, top) {
   const body = evs.length
-    ? `<ul>${evs.map(e => eventHTML(e, league)).join("")}</ul>`
+    ? evs.map(e => matchHTML(e, league, top)).join("")
     : `<p class="empty">${esc(emptyMsg)}</p>`;
   return `<section class="card"><h2>${esc(title)}</h2>${body}</section>`;
 }
@@ -171,11 +238,7 @@ async function loadTeams(league) {
     names = (j.sports?.[0]?.leagues?.[0]?.teams || []).map(t => t.team?.displayName);
   } catch (e) {}
   if (!names.filter(Boolean).length) {
-    // Repli : liste extraite du classement, dont le chargement fonctionne
-    const j = await getJSON(`${STANDINGS}${LEAGUES[league].path}/standings`);
-    for (const g of (j.children || [])) {
-      for (const en of (g.standings?.entries || [])) names.push(en.team?.displayName);
-    }
+    for (const g of await getStandings(league)) for (const en of g.entries) names.push(en.name);
   }
   const list = [...new Set(names.filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
   teamsCache[league] = list;
@@ -202,24 +265,20 @@ function favsCard(league, teams) {
 }
 
 async function standingsHTML(league) {
-  const j = await getJSON(`${STANDINGS}${LEAGUES[league].path}/standings`);
+  const groups = await getStandings(league);
+  const legend = `<p class="legend"><span class="dot direct"></span>Playoffs directs (1 à 6)<span class="dot playin"></span>Play-in (7 à 10)</p>`;
   let out = "";
-  for (const g of (j.children || [])) {
-    const entries = g.standings?.entries || [];
-    if (!entries.length) continue;
-    const rows = entries.map((en, i) => {
-      const st = Object.fromEntries((en.stats || []).map(s => [s.name, s.displayValue]));
-      const name = en.team?.displayName || en.athlete?.displayName || "?";
-      const logoUrl = en.team?.logos?.[0]?.href || en.team?.logo || "";
-      const logo = logoUrl ? `<img class="logo" src="${esc(logoUrl)}" alt="">` : "";
-      const fav = isFav(name, league) ? '<span class="star">★</span>' : "";
+  for (const g of groups) {
+    const rows = g.entries.map(en => {
+      const cls = en.seed <= 6 ? "direct" : en.seed <= 10 ? "playin" : "";
+      const logo = en.logo ? `<img class="logo" src="${esc(en.logo)}" alt="">` : "";
+      const fav = isFav(en.name, league) ? '<span class="star">★</span>' : "";
       const parts = [];
-      if (st.points !== undefined) parts.push(`${st.points} pts`);
-      if (st.gamesPlayed !== undefined) parts.push(`${st.gamesPlayed} matchs`);
-      if (st.wins !== undefined) parts.push(`${st.wins}V ${st.losses ?? ""}D`);
-      return `<li><span class="rank">${esc(st.rank ?? i + 1)}</span><span class="nm">${fav}${logo}${esc(name)}</span><span class="meta">${esc(parts.join(" · "))}</span></li>`;
+      if (en.st.wins !== undefined) parts.push(`${en.st.wins}V ${en.st.losses ?? ""}D`);
+      if (en.st.points !== undefined) parts.push(`${en.st.points} pts`);
+      return `<li class="st ${cls}"><span class="rank">${esc(en.seed)}</span><span class="nm">${fav}${logo}${esc(en.name)}</span><span class="meta">${esc(parts.join(" · "))}</span></li>`;
     }).join("");
-    out += `<section class="card"><h2>${esc(g.name || "Classement")}</h2><ul>${rows}</ul></section>`;
+    out += `<section class="card"><h2>${esc(g.name)}</h2>${legend}<ul>${rows}</ul></section>`;
   }
   return out || `<section class="card"><p class="empty">Classement indisponible pour ce championnat.</p></section>`;
 }
@@ -249,21 +308,28 @@ async function render() {
   app.innerHTML = '<p class="empty">Chargement…</p>';
 
   try {
+    let top = new Set();
+    try { top = await topSix(L); } catch (e) { top = new Set(); }
+
     let html = "";
     if (state.tab === 0) {
-      const evs = await loadEvents(L, today, addDays(today, 14));
-      const mine = evs.filter(e => e.cs.some(c => isFav(c.name, L)) || isFav(e.name, L));
-      html = listCard("Mes matchs à venir (14 jours)", mine, L, "Aucun match de vos favoris dans les 14 prochains jours.");
+      // 3 prochains jours : favoris + grosses affiches
+      const evs = await loadEvents(L, today, addDays(today, 2));
+      const mine = evs.filter(e =>
+        e.cs.some(c => isFav(c.name, L)) || isFav(e.name, L) ||
+        (e.cs.length === 2 && e.cs.every(c => top.has(c.name))));
+      html = listCard("Mes matchs et grosses affiches (3 jours)", mine, L,
+        "Aucun match de vos favoris ni grosse affiche dans les 3 prochains jours.", top);
     } else if (state.tab === 1) {
       const evs = await loadEvents(L, today, today);
-      html = listCard("Aujourd'hui", evs, L, "Aucun match aujourd'hui.");
+      html = listCard("Aujourd'hui", evs, L, "Aucun match aujourd'hui.", top);
     } else if (state.tab === 2) {
       const evs = await loadEvents(L, addDays(today, 1), addDays(today, 7));
-      html = listCard("Calendrier : 7 prochains jours", evs, L, "Rien de prévu dans les 7 prochains jours.");
+      html = listCard("Calendrier : 7 prochains jours", evs, L, "Rien de prévu dans les 7 prochains jours.", top);
     } else if (state.tab === 3) {
       const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, -1));
       const played = evs.filter(e => e.state === "post").reverse();
-      html = listCard("Résultats : saison en cours", played, L, "Aucun résultat pour la saison en cours.");
+      html = listCard("Résultats : saison en cours", played, L, "Aucun résultat pour la saison en cours.", top);
     } else {
       html = await standingsHTML(L);
     }
