@@ -54,15 +54,16 @@ b{font-variant-numeric:tabular-nums}
 const SCORES = "https://site.api.espn.com/apis/site/v2/sports/";
 const STANDINGS = "https://site.api.espn.com/apis/v2/sports/";
 
+// Version 1 : NBA seule. Pour ajouter un sport, décommentez ou copiez une ligne ci-dessous.
 const LEAGUES = {
-  "Ligue 1": {path: "soccer/fra.1", startMonth: 7, ph: "ex. Paris Saint-Germain"},
-  "NBA":     {path: "basketball/nba", startMonth: 9, ph: "ex. Boston Celtics"},
-  "Top 14":  {path: "rugby/270557", startMonth: 7, ph: "ex. Stade Toulousain"},
-  "F1":      {path: "racing/f1", startMonth: 2, ph: "ex. Charles Leclerc"}
+  "NBA": {path: "basketball/nba", startMonth: 9, ph: "ex. Boston Celtics"}
+  // "Ligue 1": {path: "soccer/fra.1", startMonth: 7, ph: "ex. Paris Saint-Germain"},
+  // "Top 14":  {path: "rugby/270557", startMonth: 7, ph: "ex. Stade Toulousain"},
+  // "F1":      {path: "racing/f1", startMonth: 2, ph: "ex. Charles Leclerc"}
 };
 const TABS = ["Mes matchs", "Aujourd'hui", "Calendrier", "Résultats", "Classement"];
 
-const state = { league: "Ligue 1", tab: 0 };
+const state = { league: "NBA", tab: 0 };
 let favs = loadFavs();
 let token = 0;
 
