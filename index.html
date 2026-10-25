@@ -163,7 +163,7 @@ table.ftbl th:nth-child(n+3),table.ftbl td:nth-child(n+3){text-align:center}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.56</div>
+<div class="ver">v1.57</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -281,8 +281,8 @@ function rememberTeam(t) {
 }
 // Couleurs des clubs français (principale, secondaire), reconnues dans le nom ESPN
 const FOOT_COLORS = [
-  ["paris saint", "004170", "DA291C"], ["marseille", "2FAEE0", "FFFFFF"], ["lyon", "DA291C", "FFFFFF"],
-  ["monaco", "E2001A", "FFFFFF"], ["lille", "1B2A6B", "E30613"], ["lens", "F5C400", "E30613"],
+  ["paris saint", "004170", "DA291C"], ["marseille", "2FAEE0", "FFFFFF"], ["lyon", "FFFFFF", "DA291C"],
+  ["monaco", "E2001A", "FFFFFF"], ["lille", "E30613", "1B2A6B"], ["lens", "F5C400", "E30613"],
   ["rennais", "E4002B", "000000"], ["nice", "E4002B", "000000"], ["strasbourg", "1F5FA8", "FFFFFF"],
   ["toulouse", "5B2D8C", "FFFFFF"], ["nantes", "FFD100", "00843D"], ["brest", "E30613", "FFFFFF"],
   ["havre", "00A3E0", "0B2D5C"], ["metz", "7A1B3A", "C0C0C0"], ["auxerre", "1F3F8C", "FFFFFF"],
@@ -484,7 +484,9 @@ function matchHTML(e, abbr = false, big = false) {
 // Par défaut : calendrier = journée en cours (première journée non terminée), résultats = journée précédente.
 async function footCalHTML(L, today) {
   const isRes = state.matchView === "results";
-  const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, 60));
+  // Fenêtre de 6 semaines autour d'aujourd'hui : une plage plus longue fait échouer l'API
+  // et déclenche le repli jour par jour (très lent)
+  const evs = await loadEvents(L, addDays(today, -21), addDays(today, 21));
   const season = evs.filter(e => e.stype !== 1 && e.wk);
   const weeks = [...new Set(season.map(e => e.wk))].sort((a, b) => a - b);
   const pending = season.filter(e => e.state !== "post").map(e => e.wk);
