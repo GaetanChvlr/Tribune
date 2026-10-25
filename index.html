@@ -96,7 +96,7 @@ table.pl td.pn{padding-left:8px;font-weight:600;white-space:nowrap;overflow:hidd
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.16</div>
+<div class="ver">v1.17</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -117,6 +117,7 @@ const TABS = [
   {key: "standings", label: "Classement"},
   {key: "mvp", label: "MVP"},
   {key: "stats", label: "Stats"},
+  {key: "perfs", label: "Perfs"},
   {key: "favs", label: "Favoris"}
 ];
 
@@ -124,7 +125,7 @@ const REFRESH_LIVE = 60 * 1000;            // match en cours
 const REFRESH_IDLE = 3 * 60 * 60 * 1000;   // le reste
 const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 
-const state = { league: "NBA", tab: "mine", detail: null, teamFilter: "", mvpPeriod: "nuit", mvpKey: "", statPeriod: "nuit", statKey: "" };
+const state = { league: "NBA", tab: "mine", detail: null, teamFilter: "", mvpPeriod: "nuit", mvpKey: "", statPeriod: "nuit", statKey: "", perfPeriod: "nuit", perfKey: "" };
 let favs = loadFavs();
 let token = 0;
 let refreshTimer = null;
@@ -593,6 +594,56 @@ async function statsHTML() {
   return `${nav}<section class="card" style="margin-bottom:0">${select}<p class="meta">Top 5 par catégorie · ${minText}</p></section>${cats}`;
 }
 
+// Grosses perfs : meilleures performances d'un seul match, lues depuis data/perfs.json
+function shortDay(k) {
+  return new Date(k + "T12:00:00Z").toLocaleDateString("fr-FR", {timeZone: "UTC", day: "numeric", month: "short"});
+}
+
+async function perfsHTML() {
+  let data;
+  try {
+    const r = await fetch("data/perfs.json", {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    data = await r.json();
+  } catch (e) {
+    return `<section class="card"><h2>Grosses perfs</h2><p class="empty">Classements pas encore disponibles. Ils seront générés après la première mise à jour automatique.</p></section>`;
+  }
+
+  const per = state.perfPeriod;
+  const buckets = { nuit: data.nights, semaine: data.weeks, mois: data.months, saison: data.season };
+  const bucket = buckets[per] || {};
+  const keys = Object.keys(bucket).sort().reverse();
+  const labelOf = k => per === "nuit" ? dayLabel(k)
+    : per === "semaine" ? "Semaine du " + dayLabel(k).toLowerCase()
+    : per === "mois" ? monthLabel(k)
+    : `Saison ${k}`;
+
+  const periodButtons = [["nuit", "Nuit"], ["semaine", "Semaine"], ["mois", "Mois"], ["saison", "Saison"]]
+    .map(([k, l]) => `<button data-perf="${k}" class="${k === per ? "on" : ""}">${l}</button>`).join("");
+  const nav = `<div class="nav">${periodButtons}</div>`;
+
+  if (!keys.length) {
+    return `${nav}<section class="card"><p class="empty">Aucune donnée pour cette période.</p></section>`;
+  }
+  if (!state.perfKey || !bucket[state.perfKey]) state.perfKey = keys[0];
+
+  const select = `<select class="filter" id="perfKey">${keys.map(k =>
+    `<option value="${esc(k)}"${k === state.perfKey ? " selected" : ""}>${esc(labelOf(k))}</option>`).join("")}</select>`;
+
+  const cats = (data.categories || []).map(c => {
+    const list = (bucket[state.perfKey] || {})[c.key] || [];
+    const rows = list.map((p, i) =>
+      `<tr><td>${i + 1}. ${esc(p.name)}</td><td>${esc(p.team)}</td><td><b>${esc(p.value)}</b></td><td>${esc(shortDay(p.day))}</td></tr>`).join("");
+    return `<section class="card"><h2>${esc(c.label)}</h2>
+      ${list.length
+        ? `<table class="pl"><tr><th>Joueur</th><th>Équipe</th><th>Valeur</th><th>Date</th></tr>${rows}</table>`
+        : '<p class="empty">Aucune performance.</p>'}
+    </section>`;
+  }).join("");
+
+  return `${nav}<section class="card" style="margin-bottom:0">${select}<p class="meta">Meilleure performance d'un seul match, top 5 par catégorie</p></section>${cats}`;
+}
+
 function renderNav() {
   document.getElementById("leagues").innerHTML = Object.keys(LEAGUES).map(l =>
     `<button data-league="${esc(l)}" class="${l === state.league ? "on" : ""}">${esc(l)}</button>`).join("");
@@ -667,6 +718,8 @@ async function render(opts = {}) {
         html = await mvpHTML();
       } else if (state.tab === "stats") {
         html = await statsHTML();
+      } else if (state.tab === "perfs") {
+        html = await perfsHTML();
       } else if (state.tab === "favs") {
         let teams = [];
         try { teams = await loadTeams(L); } catch (e) { teams = []; }
@@ -692,6 +745,8 @@ appEl.addEventListener("click", e => {
   if (mb) { state.mvpPeriod = mb.dataset.mvp; state.mvpKey = ""; render(); return; }
   const sb = e.target.closest("button[data-stat]");
   if (sb) { state.statPeriod = sb.dataset.stat; state.statKey = ""; render(); return; }
+  const pb = e.target.closest("button[data-perf]");
+  if (pb) { state.perfPeriod = pb.dataset.perf; state.perfKey = ""; render(); return; }
   const m = e.target.closest(".match[data-id]");
   if (m) { state.detail = m.dataset.id; render(); return; }
   const d = e.target.closest(".del");
@@ -721,6 +776,9 @@ appEl.addEventListener("change", e => {
     render({silent: true});
   } else if (e.target.id === "statKey") {
     state.statKey = e.target.value;
+    render({silent: true});
+  } else if (e.target.id === "perfKey") {
+    state.perfKey = e.target.value;
     render({silent: true});
   }
 });

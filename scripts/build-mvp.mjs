@@ -15,6 +15,7 @@ import { dirname } from "node:path";
 const BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba";
 const OUT_MVP = "data/mvp.json";
 const OUT_STATS = "data/stats.json";
+const OUT_PERFS = "data/perfs.json";
 const TZ = "America/New_York";
 const TOP_MVP = 10;
 const TOP_STATS = 5;
@@ -157,6 +158,21 @@ function statsBuckets(groups, minGames) {
   return out;
 }
 
+// Grosses perfs : meilleures performances d'un seul match, par catégorie
+function perfBuckets(groups) {
+  const out = {};
+  for (const [k, list] of Object.entries(groups)) {
+    out[k] = {};
+    for (const c of CATS) {
+      out[k][c.key] = [...list]
+        .sort((a, b) => b[c.key] - a[c.key])
+        .slice(0, TOP_STATS)
+        .map(r => ({ name: r.name, team: r.team, value: r[c.key], day: r.day }));
+    }
+  }
+  return out;
+}
+
 async function main() {
   const now = new Date();
   const todayKey = usDay(now);
@@ -216,10 +232,20 @@ async function main() {
     season: statsBuckets({ [label]: records }, 3)
   };
 
+  const perfs = {
+    updated: now.toISOString(),
+    categories: CATS,
+    nights: perfBuckets(byDay),
+    weeks: perfBuckets(byWeek),
+    months: perfBuckets(byMonth),
+    season: perfBuckets({ [label]: records })
+  };
+
   mkdirSync(dirname(OUT_MVP), { recursive: true });
   writeFileSync(OUT_MVP, JSON.stringify(mvp, null, 2) + "\n");
   writeFileSync(OUT_STATS, JSON.stringify(stats, null, 2) + "\n");
-  console.log(`Terminé : ${games} matchs, ${skipped} ignorés. Fichiers ${OUT_MVP} et ${OUT_STATS} écrits.`);
+  writeFileSync(OUT_PERFS, JSON.stringify(perfs, null, 2) + "\n");
+  console.log(`Terminé : ${games} matchs, ${skipped} ignorés. Fichiers ${OUT_MVP}, ${OUT_STATS} et ${OUT_PERFS} écrits.`);
 }
 
 main().catch(e => {
