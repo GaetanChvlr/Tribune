@@ -1,0 +1,509 @@
+{
+  "updated": "2026-10-25T17:06:22.762Z",
+  "matchs": 36,
+  "matchs_ignores": 0,
+  "nights": {
+    "2026-10-20": [
+      {
+        "name": "Paul George",
+        "team": "Boston Celtics",
+        "gmsc": 31.3,
+        "games": 1
+      },
+      {
+        "name": "Shai Gilgeous-Alexander",
+        "team": "Oklahoma City Thunder",
+        "gmsc": 25.6,
+        "games": 1
+      },
+      {
+        "name": "Tyrese Maxey",
+        "team": "Philadelphia 76ers",
+        "gmsc": 24.9,
+        "games": 1
+      },
+      {
+        "name": "Jalen Duren",
+        "team": "Detroit Pistons",
+        "gmsc": 20.2,
+        "games": 1
+      },
+      {
+        "name": "Jaylen Brown",
+        "team": "Philadelphia 76ers",
+        "gmsc": 17.9,
+        "games": 1
+      },
+      {
+        "name": "Jared McCain",
+        "team": "Oklahoma City Thunder",
+        "gmsc": 17.1,
+        "games": 1
+      },
+      {
+        "name": "Chet Holmgren",
+        "team": "Oklahoma City Thunder",
+        "gmsc": 16.5,
+        "games": 1
+      },
+      {
+        "name": "Karl-Anthony Towns",
+        "team": "New York Knicks",
+        "gmsc": 16.2,
+        "games": 1
+      },
+      {
+        "name": "Cade Cunningham",
+        "team": "Detroit Pistons",
+        "gmsc": 16.1,
+        "games": 1
+      },
+      {
+        "name": "De'Aaron Fox",
+        "team": "San Antonio Spurs",
+        "gmsc": 15.3,
+        "games": 1
+      }
+    ],
+    "2026-10-21": [
+      {
+        "name": "Ty Jerome",
+        "team": "Memphis Grizzlies",
+        "gmsc": 38.7,
+        "games": 1
+      },
+      {
+        "name": "Anthony Edwards",
+        "team": "Minnesota Timberwolves",
+        "gmsc": 34.1,
+        "games": 1
+      },
+      {
+        "name": "Paolo Banchero",
+        "team": "Orlando Magic",
+        "gmsc": 32.7,
+        "games": 1
+      },
+      {
+        "name": "Anthony Davis",
+        "team": "Washington Wizards",
+        "gmsc": 29.7,
+        "games": 1
+      },
+      {
+        "name": "Julius Randle",
+        "team": "Brooklyn Nets",
+        "gmsc": 26,
+        "games": 1
+      },
+      {
+        "name": "Nickeil Alexander-Walker",
+        "team": "Atlanta Hawks",
+        "gmsc": 25.5,
+        "games": 1
+      },
+      {
+        "name": "Jabari Smith Jr.",
+        "team": "Houston Rockets",
+        "gmsc": 24.9,
+        "games": 1
+      },
+      {
+        "name": "Damian Lillard",
+        "team": "Portland Trail Blazers",
+        "gmsc": 24.9,
+        "games": 1
+      },
+      {
+        "name": "Walker Kessler",
+        "team": "Los Angeles Lakers",
+        "gmsc": 24.8,
+        "games": 1
+      },
+      {
+        "name": "Cooper Flagg",
+        "team": "Dallas Mavericks",
+        "gmsc": 24.3,
+        "games": 1
+      }
+    ],
+    "2026-10-22": [
+      {
+        "name": "Tyrese Maxey",
+        "team": "Philadelphia 76ers",
+        "gmsc": 23.8,
+        "games": 1
+      },
+      {
+        "name": "Donovan Mitchell",
+        "team": "Cleveland Cavaliers",
+        "gmsc": 23.5,
+        "games": 1
+      },
+      {
+        "name": "Aaron Gordon",
+        "team": "Denver Nuggets",
+        "gmsc": 18.9,
+        "games": 1
+      },
+      {
+        "name": "Chet Holmgren",
+        "team": "Oklahoma City Thunder",
+        "gmsc": 17,
+        "games": 1
+      },
+      {
+        "name": "Joel Embiid",
+        "team": "Philadelphia 76ers",
+        "gmsc": 15.8,
+        "games": 1
+      },
+      {
+        "name": "Jalen Williams",
+        "team": "Oklahoma City Thunder",
+        "gmsc": 14.3,
+        "games": 1
+      },
+      {
+        "name": "Evan Mobley",
+        "team": "Cleveland Cavaliers",
+        "gmsc": 13.3,
+        "games": 1
+      },
+      {
+        "name": "LeBron James",
+        "team": "Philadelphia 76ers",
+        "gmsc": 13.2,
+        "games": 1
+      },
+      {
+        "name": "VJ Edgecombe",
+        "team": "Philadelphia 76ers",
+        "gmsc": 13.2,
+        "games": 1
+      },
+      {
+        "name": "Jaylen Brown",
+        "team": "Philadelphia 76ers",
+        "gmsc": 12,
+        "games": 1
+      }
+    ],
+    "2026-10-23": [
+      {
+        "name": "Jayson Tatum",
+        "team": "Boston Celtics",
+        "gmsc": 31.6,
+        "games": 1
+      },
+      {
+        "name": "Giannis Antetokounmpo",
+        "team": "Miami Heat",
+        "gmsc": 30.6,
+        "games": 1
+      },
+      {
+        "name": "Domantas Sabonis",
+        "team": "Sacramento Kings",
+        "gmsc": 30,
+        "games": 1
+      },
+      {
+        "name": "Walker Kessler",
+        "team": "Los Angeles Lakers",
+        "gmsc": 26.5,
+        "games": 1
+      },
+      {
+        "name": "Tyler Herro",
+        "team": "Milwaukee Bucks",
+        "gmsc": 25.9,
+        "games": 1
+      },
+      {
+        "name": "Austin Reaves",
+        "team": "Los Angeles Lakers",
+        "gmsc": 23.8,
+        "games": 1
+      },
+      {
+        "name": "Alperen Sengun",
+        "team": "Houston Rockets",
+        "gmsc": 22.9,
+        "games": 1
+      },
+      {
+        "name": "Cameron Boozer",
+        "team": "Memphis Grizzlies",
+        "gmsc": 22.8,
+        "games": 1
+      },
+      {
+        "name": "RJ Barrett",
+        "team": "Toronto Raptors",
+        "gmsc": 22,
+        "games": 1
+      },
+      {
+        "name": "Deni Avdija",
+        "team": "Portland Trail Blazers",
+        "gmsc": 20.7,
+        "games": 1
+      }
+    ],
+    "2026-10-24": [
+      {
+        "name": "Devin Booker",
+        "team": "Phoenix Suns",
+        "gmsc": 35.2,
+        "games": 1
+      },
+      {
+        "name": "Jamal Murray",
+        "team": "Denver Nuggets",
+        "gmsc": 33.7,
+        "games": 1
+      },
+      {
+        "name": "Nikola Jokic",
+        "team": "Denver Nuggets",
+        "gmsc": 32.9,
+        "games": 1
+      },
+      {
+        "name": "Jalen Johnson",
+        "team": "Atlanta Hawks",
+        "gmsc": 29.8,
+        "games": 1
+      },
+      {
+        "name": "Caleb Wilson",
+        "team": "Chicago Bulls",
+        "gmsc": 26.2,
+        "games": 1
+      },
+      {
+        "name": "Michael Porter Jr.",
+        "team": "Brooklyn Nets",
+        "gmsc": 24.2,
+        "games": 1
+      },
+      {
+        "name": "Joel Embiid",
+        "team": "Philadelphia 76ers",
+        "gmsc": 23.3,
+        "games": 1
+      },
+      {
+        "name": "De'Anthony Melton",
+        "team": "Golden State Warriors",
+        "gmsc": 23.3,
+        "games": 1
+      },
+      {
+        "name": "Yaxel Lendeborg",
+        "team": "Golden State Warriors",
+        "gmsc": 22.8,
+        "games": 1
+      },
+      {
+        "name": "Trae Young",
+        "team": "Washington Wizards",
+        "gmsc": 22.6,
+        "games": 1
+      }
+    ]
+  },
+  "weeks": {
+    "2026-10-19": [
+      {
+        "name": "Ty Jerome",
+        "team": "Memphis Grizzlies",
+        "gmsc": 28.2,
+        "games": 2
+      },
+      {
+        "name": "Devin Booker",
+        "team": "Phoenix Suns",
+        "gmsc": 27.1,
+        "games": 2
+      },
+      {
+        "name": "Walker Kessler",
+        "team": "Los Angeles Lakers",
+        "gmsc": 25.7,
+        "games": 2
+      },
+      {
+        "name": "Domantas Sabonis",
+        "team": "Sacramento Kings",
+        "gmsc": 25.4,
+        "games": 2
+      },
+      {
+        "name": "Austin Reaves",
+        "team": "Los Angeles Lakers",
+        "gmsc": 22.6,
+        "games": 2
+      },
+      {
+        "name": "Paolo Banchero",
+        "team": "Orlando Magic",
+        "gmsc": 21.9,
+        "games": 2
+      },
+      {
+        "name": "Julius Randle",
+        "team": "Brooklyn Nets",
+        "gmsc": 21.8,
+        "games": 2
+      },
+      {
+        "name": "Tyrese Maxey",
+        "team": "Philadelphia 76ers",
+        "gmsc": 21.2,
+        "games": 3
+      },
+      {
+        "name": "Jalen Johnson",
+        "team": "Atlanta Hawks",
+        "gmsc": 20.9,
+        "games": 3
+      },
+      {
+        "name": "Giannis Antetokounmpo",
+        "team": "Miami Heat",
+        "gmsc": 20.9,
+        "games": 3
+      }
+    ]
+  },
+  "months": {
+    "2026-10": [
+      {
+        "name": "Tyrese Maxey",
+        "team": "Philadelphia 76ers",
+        "gmsc": 21.2,
+        "games": 3
+      },
+      {
+        "name": "Jalen Johnson",
+        "team": "Atlanta Hawks",
+        "gmsc": 20.9,
+        "games": 3
+      },
+      {
+        "name": "Giannis Antetokounmpo",
+        "team": "Miami Heat",
+        "gmsc": 20.9,
+        "games": 3
+      },
+      {
+        "name": "Trae Young",
+        "team": "Washington Wizards",
+        "gmsc": 19.7,
+        "games": 3
+      },
+      {
+        "name": "Alperen Sengun",
+        "team": "Houston Rockets",
+        "gmsc": 18.9,
+        "games": 3
+      },
+      {
+        "name": "Kevin Durant",
+        "team": "Houston Rockets",
+        "gmsc": 18.4,
+        "games": 3
+      },
+      {
+        "name": "Amen Thompson",
+        "team": "Houston Rockets",
+        "gmsc": 18.4,
+        "games": 3
+      },
+      {
+        "name": "De'Aaron Fox",
+        "team": "San Antonio Spurs",
+        "gmsc": 18.3,
+        "games": 3
+      },
+      {
+        "name": "Dyson Daniels",
+        "team": "Atlanta Hawks",
+        "gmsc": 18.3,
+        "games": 3
+      },
+      {
+        "name": "Nickeil Alexander-Walker",
+        "team": "Atlanta Hawks",
+        "gmsc": 17.7,
+        "games": 3
+      }
+    ]
+  },
+  "season": {
+    "2026-27": [
+      {
+        "name": "Tyrese Maxey",
+        "team": "Philadelphia 76ers",
+        "gmsc": 21.2,
+        "games": 3
+      },
+      {
+        "name": "Jalen Johnson",
+        "team": "Atlanta Hawks",
+        "gmsc": 20.9,
+        "games": 3
+      },
+      {
+        "name": "Giannis Antetokounmpo",
+        "team": "Miami Heat",
+        "gmsc": 20.9,
+        "games": 3
+      },
+      {
+        "name": "Trae Young",
+        "team": "Washington Wizards",
+        "gmsc": 19.7,
+        "games": 3
+      },
+      {
+        "name": "Alperen Sengun",
+        "team": "Houston Rockets",
+        "gmsc": 18.9,
+        "games": 3
+      },
+      {
+        "name": "Kevin Durant",
+        "team": "Houston Rockets",
+        "gmsc": 18.4,
+        "games": 3
+      },
+      {
+        "name": "Amen Thompson",
+        "team": "Houston Rockets",
+        "gmsc": 18.4,
+        "games": 3
+      },
+      {
+        "name": "De'Aaron Fox",
+        "team": "San Antonio Spurs",
+        "gmsc": 18.3,
+        "games": 3
+      },
+      {
+        "name": "Dyson Daniels",
+        "team": "Atlanta Hawks",
+        "gmsc": 18.3,
+        "games": 3
+      },
+      {
+        "name": "Nickeil Alexander-Walker",
+        "team": "Atlanta Hawks",
+        "gmsc": 17.7,
+        "games": 3
+      }
+    ]
+  }
+}
