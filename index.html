@@ -93,7 +93,7 @@ table.pl td.pn{padding-left:8px;font-weight:600;white-space:nowrap;overflow:hidd
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.9</div>
+<div class="ver">v1.10</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -404,7 +404,7 @@ async function detailHTML(id, league) {
     : "";
 
   // Joueurs : un seul tableau, couleur par équipe
-  const cols = [["PTS", "PTS"], ["REB", "REB"], ["AST", "AST"], ["BLK", "Contres"], ["+/-", "+/-"]];
+  const cols = [["PTS", "PTS"], ["REB", "REB"], ["AST", "AST"], ["STL", "Steals"], ["BLK", "Contres"], ["+/-", "+/-"]];
   const playerRows = [];
   for (const team of (j.boxscore?.players || [])) {
     const block = team.statistics?.[0];
