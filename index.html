@@ -156,7 +156,7 @@ body{padding-top:max(56px,calc(env(safe-area-inset-top) + 16px))!important}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.52</div>
+<div class="ver">v1.53</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -166,7 +166,11 @@ const STANDINGS = "https://site.api.espn.com/apis/v2/sports/";
 // Version 1 : NBA seule. Pour ajouter un sport, décommentez ou copiez une ligne ci-dessous.
 const LEAGUES = {
   "NBA": {path: "basketball/nba", startMonth: 9, ph: "ex. Boston Celtics"},
-  "F1":  {path: "racing/f1", startMonth: 2, ph: "ex. Charles Leclerc"}
+  "F1":  {path: "racing/f1", startMonth: 2, ph: "ex. Charles Leclerc"},
+  "Ligue 1": {path: "soccer/fra.1", startMonth: 7, ph: "ex. Paris Saint-Germain"},
+  "Ligue 2": {path: "soccer/fra.2", startMonth: 7, ph: "ex. Toulouse FC"},
+  "Ligue 3": {path: "soccer/fra.3", startMonth: 7, ph: "ex. Paris FC"},
+  "National": {path: "soccer/fra.4", startMonth: 7, ph: "ex. Nantes"}
   // "Ligue 1": {path: "soccer/fra.1", startMonth: 7, ph: "ex. Paris Saint-Germain"},
   // "Top 14":  {path: "rugby/270557", startMonth: 7, ph: "ex. Stade Toulousain"}
 };
@@ -204,10 +208,10 @@ const LANDING = [
   {key: "F1", group: "Automobile", logo: "https://a.espncdn.com/i/teamlogos/leagues/500/f1.png"},
   {key: "Ligue des Champions", group: "Football", soon: true, logo: "logos/ucl-white.png"},
   {key: "Europa League", group: "Football", soon: true, logo: "logos/europa-white.png"},
-  {key: "Ligue 1", group: "Football", soon: true, logo: "logos/ligue1-white.png"},
-  {key: "Ligue 2", group: "Football", soon: true, logo: "logos/ligue2-white.png"},
-  {key: "Ligue 3", group: "Football", soon: true, logo: "logos/ligue3.png"},
-  {key: "National", group: "Football", soon: true, logo: "logos/national-white.png"},
+  {key: "Ligue 1", group: "Football", logo: "logos/ligue1-white.png"},
+  {key: "Ligue 2", group: "Football", logo: "logos/ligue2-white.png"},
+  {key: "Ligue 3", group: "Football", logo: "logos/ligue3.png"},
+  {key: "National", group: "Football", logo: "logos/national-white.png"},
   {key: "Top 14", group: "Rugby", soon: true, logo: "logos/top14.webp"}
 ];
 // Menu d'accueil : uniquement des logos, regroupés par sport
@@ -343,7 +347,7 @@ async function getStandings(league) {
   const groups = (j.children || []).map(g => {
     const raw = (g.standings?.entries || []).map(en => {
       const st = Object.fromEntries((en.stats || []).map(s => [s.name, s.displayValue]));
-      const ps = parseInt(st.playoffSeed, 10);
+      const ps = parseInt(st.playoffSeed ?? st.rank, 10);
       const wp = parseFloat(st.winPercent ?? st.winPct ?? "");
       const w = parseFloat(st.wins ?? "");
       return {
@@ -877,6 +881,7 @@ async function homeHTML() {
   let matches = "";
   try { matches = await homeMatchesHTML(L); }
   catch (e) { matches = `<section class="card"><p class="empty">Matchs indisponibles : ${esc(e.message)}</p></section>`; }
+  if (L !== "NBA") return matches;
   const data = await loadGames();
   return `<div class="cols"><div class="col">${matches}</div><div class="col">${homeMvpHTML(data)}${homePlayersHTML(data)}</div></div>`;
 }
@@ -884,6 +889,7 @@ async function homeHTML() {
 // ---------- Stats (leaders, grosses perfs, MVP) ----------
 
 async function statsHTML() {
+  if (state.league !== "NBA") return '<section class="card"><p class="empty">Statistiques joueurs bientôt disponibles pour ce championnat.</p></section>';
   const data = await loadGames();
   const per = state.statsPeriod;
   const nav = `<div class="nav">${PERIODS.map(([k, l]) =>
@@ -1222,7 +1228,7 @@ async function render(opts = {}) {
       } else {
         let teams = [];
         try { teams = await loadTeams(L); } catch (e) { teams = []; }
-        html = favsCard(L, teams) + await playersCard();
+        html = favsCard(L, teams) + (L === "NBA" ? await playersCard() : "");
       }
     }
     if (my !== token) return;
