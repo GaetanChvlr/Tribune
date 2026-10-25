@@ -64,6 +64,7 @@ li.st.playin{background:#f59e0b22;box-shadow:inset 3px 0 0 var(--playin)}
 .rank{width:24px;color:var(--muted);font-variant-numeric:tabular-nums}
 .nm{flex:1;display:flex;align-items:center;gap:6px;min-width:0}
 .nm .tn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+select.filter{display:block;width:100%;margin:4px 0 8px}
 .logo{width:24px;height:24px;object-fit:contain;flex:none}
 
 /* Détail d'un match */
@@ -92,7 +93,7 @@ table.pl th{color:var(--muted);font-weight:500;font-size:12px}
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.5</div>
+<div class="ver">v1.6</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -118,7 +119,7 @@ const REFRESH_LIVE = 60 * 1000;            // match en cours
 const REFRESH_IDLE = 3 * 60 * 60 * 1000;   // le reste
 const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 
-const state = { league: "NBA", tab: "mine", detail: null };
+const state = { league: "NBA", tab: "mine", detail: null, teamFilter: "" };
 let favs = loadFavs();
 let token = 0;
 let refreshTimer = null;
@@ -471,7 +472,11 @@ async function render(opts = {}) {
       } else if (state.tab === "results") {
         const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, -1));
         const played = evs.filter(e => e.state === "post").reverse();
-        html = listCard("Résultats : saison en cours", played, "Aucun résultat pour la saison en cours.");
+        let teams = [];
+        try { teams = await loadTeams(L); } catch (e) { teams = []; }
+        const shown = played.filter(e => !state.teamFilter || e.cs.some(c => c.name === state.teamFilter));
+        const select = `<select class="filter" id="teamFilter"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}"${t === state.teamFilter ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
+        html = `<section class="card"><h2>Résultats : saison en cours</h2>${select}${shown.length ? shown.map(matchHTML).join("") : '<p class="empty">Aucun résultat pour cette sélection.</p>'}</section>`;
       } else if (state.tab === "favs") {
         let teams = [];
         try { teams = await loadTeams(L); } catch (e) { teams = []; }
@@ -513,6 +518,11 @@ appEl.addEventListener("submit", e => {
   saveFavs();
   render();
 });
+appEl.addEventListener("change", e => {
+  if (e.target.id !== "teamFilter") return;
+  state.teamFilter = e.target.value;
+  render({silent: true});
+});
 // Mémorise les conférences dépliées pour les garder après un rafraîchissement
 appEl.addEventListener("toggle", e => {
   const d = e.target;
@@ -523,7 +533,7 @@ appEl.addEventListener("toggle", e => {
 
 document.getElementById("leagues").addEventListener("click", e => {
   const b = e.target.closest("button[data-league]");
-  if (b) { state.league = b.dataset.league; state.detail = null; render(); }
+  if (b) { state.league = b.dataset.league; state.detail = null; state.teamFilter = ""; render(); }
 });
 document.getElementById("tabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-tab]");
