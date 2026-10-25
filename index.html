@@ -151,6 +151,12 @@ table.ev td.evr{text-align:left}
 table.tbl.ftbl td.pn,table.tbl.ftbl th:nth-child(2){text-align:left;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 table.ftbl th:nth-child(n+3),table.ftbl td:nth-child(n+3){text-align:center}
 .gros{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--accent);color:var(--on-accent);margin-right:6px}
+.landing{margin-top:4px}
+.lgroup{margin:12px 0 6px!important}
+.lgrid{gap:8px!important}
+.ltile{padding-bottom:66%!important}
+.lpair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.lpair .lgrid{grid-template-columns:1fr}
 </style>
 </head>
 <body>
@@ -163,7 +169,7 @@ table.ftbl th:nth-child(n+3),table.ftbl td:nth-child(n+3){text-align:center}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.61</div>
+<div class="ver">v1.62</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -230,9 +236,19 @@ function landingHTML() {
     const badge = `<span class="lfb"${l.logo ? "" : ' style="display:flex"'}>${esc(l.key)}</span>`;
     return `<button class="ltile${l.soon ? " soon" : ""}" ${attr} aria-label="${esc(l.key)}">${img}${badge}</button>`;
   };
-  return '<div class="landing">' + groups.map(g =>
-    `<h3 class="lgroup">${esc(g)}</h3><div class="lgrid">${LANDING.filter(l => l.group === g).map(tile).join("")}</div>`).join("")
-    + '</div><p id="soonMsg" class="meta" style="min-height:20px;text-align:center;margin-top:8px"></p>';
+  const block = g => `<div class="lblock"><h3 class="lgroup">${esc(g)}</h3><div class="lgrid">${LANDING.filter(l => l.group === g).map(tile).join("")}</div></div>`;
+  // Les sports à une seule compétition (Basket, Automobile) partagent une ligne, pour tenir sans défilement
+  const single = g => LANDING.filter(l => l.group === g).length === 1;
+  let out = "";
+  for (let i = 0; i < groups.length; i++) {
+    if (single(groups[i]) && single(groups[i + 1])) {
+      out += `<div class="lpair">${block(groups[i])}${block(groups[i + 1])}</div>`;
+      i++;
+    } else {
+      out += block(groups[i]);
+    }
+  }
+  return '<div class="landing">' + out + '</div><p id="soonMsg" class="meta" style="min-height:20px;text-align:center;margin-top:8px"></p>';
 }
 
 let refreshTimer = null;
