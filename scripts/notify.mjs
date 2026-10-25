@@ -13,6 +13,7 @@ const STANDINGS = "https://site.api.espn.com/apis/v2/sports/basketball/nba/stand
 const CONFIG = "notifications.json";
 const STATE = "data/notified.json";
 const TZ = "America/New_York";
+const APP_URL = "https://gaetanchvlr.github.io/Tribune/";  // ouvert au toucher de la notification
 
 // Abréviations NBA, sur le nom court ESPN (« Spurs », « 76ers »…)
 const ABBR = {"Hawks":"ATL","Celtics":"BOS","Nets":"BKN","Hornets":"CHA","Bulls":"CHI","Cavaliers":"CLE","Mavericks":"DAL","Nuggets":"DEN","Pistons":"DET","Warriors":"GSW","Rockets":"HOU","Pacers":"IND","Clippers":"LAC","Lakers":"LAL","Grizzlies":"MEM","Heat":"MIA","Bucks":"MIL","Timberwolves":"MIN","Pelicans":"NOP","Knicks":"NYK","Thunder":"OKC","Magic":"ORL","76ers":"PHI","Suns":"PHX","Trail Blazers":"POR","Kings":"SAC","Spurs":"SAS","Raptors":"TOR","Jazz":"UTA","Wizards":"WAS"};
@@ -53,7 +54,7 @@ async function send(title, body) {
   }
   const r = await fetch(`https://ntfy.sh/${encodeURIComponent(TOPIC)}`, {
     method: "POST",
-    headers: { Title: title, Tags: "basketball" },
+    headers: { Title: title, Tags: "basketball", Click: APP_URL },
     body
   });
   if (!r.ok) throw new Error("ntfy HTTP " + r.status);
