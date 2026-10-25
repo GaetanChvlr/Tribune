@@ -93,7 +93,7 @@ table.pl td.pn{padding-left:8px;font-weight:600;white-space:nowrap;overflow:hidd
 <div class="nav" id="tabs"></div>
 
 <div id="app"></div>
-<div class="ver">v1.11</div>
+<div class="ver">v1.12</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -126,6 +126,7 @@ let refreshTimer = null;
 let liveNow = false;
 let RANKS = new Map(); // nom d'équipe -> {seed, conf}
 let TOP = new Set();   // équipes du top 6 de leur conférence
+const TEAM_LOGOS = {}; // nom d'équipe -> URL du logo (mémorisé depuis les matchs)
 const openConfs = new Set(); // conférences dépliées (conservées au rafraîchissement)
 
 function loadFavs() {
@@ -152,13 +153,24 @@ async function getJSON(url) {
   return r.json();
 }
 
+// Logo d'une équipe, avec repli sur les logos déjà vus dans les matchs
+function logoOf(team) {
+  const l = team?.logo || team?.logos?.[0]?.href || "";
+  if (l) return l;
+  return TEAM_LOGOS[team?.displayName] || "";
+}
+
 function parseEvent(ev) {
   const comp = (ev.competitions || [])[0] || {};
-  const cs = (comp.competitors || []).map(c => ({
-    name: c.team?.displayName || c.athlete?.displayName || c.displayName || "",
-    score: c.score ?? "",
-    logo: c.team?.logo || ""
-  }));
+  const cs = (comp.competitors || []).map(c => {
+    const logo = logoOf(c.team);
+    if (c.team?.displayName && logo) TEAM_LOGOS[c.team.displayName] = logo;
+    return {
+      name: c.team?.displayName || c.athlete?.displayName || c.displayName || "",
+      score: c.score ?? "",
+      logo
+    };
+  });
   const t = ev.status?.type || {};
   return {
     id: ev.id,
@@ -211,7 +223,7 @@ async function getStandings(league) {
       const w = parseFloat(st.wins ?? "");
       return {
         name: en.team?.displayName || en.athlete?.displayName || "?",
-        logo: en.team?.logos?.[0]?.href || en.team?.logo || "",
+        logo: logoOf(en.team),
         st,
         ps: Number.isFinite(ps) ? ps : null,
         score: Number.isFinite(wp) ? wp : (Number.isFinite(w) ? w : 0)
@@ -250,10 +262,10 @@ async function loadRanks(league) {
 }
 
 // Nom sur une ligne, rang en dessous, ex. « (1er E) »
-function teamCell(name, win = false) {
+function teamCell(name, win = false, style = "") {
   const r = RANKS.get(name);
   const rank = r ? `(${r.seed}${r.seed === 1 ? "er" : "e"}${r.conf ? " " + r.conf : ""})` : "";
-  return `<div class="nm2${win ? " win" : ""}"><div class="tn">${esc(name)}</div>${rank ? `<div class="rk">${esc(rank)}</div>` : ""}</div>`;
+  return `<div class="nm2${win ? " win" : ""}"><div class="tn"${style ? ` style="${style}"` : ""}>${esc(name)}</div>${rank ? `<div class="rk">${esc(rank)}</div>` : ""}</div>`;
 }
 
 function isFav(text, league) {
@@ -354,6 +366,12 @@ function brightness(hex) {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
 
+// Couleur du texte : la couleur de l'équipe, sauf si elle est trop sombre pour le mode nuit
+function textColor(hex) {
+  if (!hex) return "";
+  return brightness(hex) < 0.3 ? "var(--text)" : `#${hex.replace("#", "")}`;
+}
+
 // Détail d'un match : score, quart-temps, tous les joueurs
 async function detailHTML(id, league) {
   const j = await getJSON(`${SCORES}${LEAGUES[league].path}/summary?event=${encodeURIComponent(id)}`);
@@ -362,8 +380,21 @@ async function detailHTML(id, league) {
   const st = comp.status?.type || {};
   if (st.state === "in") liveNow = true;
 
+  // Couleurs par équipe : depuis l'en-tête, puis depuis la feuille de match
+  const colorByName = {};
+  for (const t of (j.boxscore?.teams || [])) {
+    if (t.team?.displayName && t.team?.color) colorByName[t.team.displayName] = t.team.color;
+  }
+  for (const c of comps) {
+    if (c.team?.displayName && c.team?.color) colorByName[c.team.displayName] = c.team.color;
+  }
+  const colorOf = team => colorByName[team?.displayName] || team?.color || "";
+
   const [a = {}, b = {}] = comps;
-  const logo = c => c.team?.logo ? `<img src="${esc(c.team.logo)}" alt="">` : "";
+  const logo = c => {
+    const l = logoOf(c.team) || logoOf((j.boxscore?.teams || []).find(t => t.team?.displayName === c.team?.displayName)?.team);
+    return l ? `<img src="${esc(l)}" alt="">` : "";
+  };
   const shortName = c => c.team?.shortDisplayName || c.team?.displayName || "";
   const aFinal = Number(a.score), bFinal = Number(b.score);
   const aWin = Number.isFinite(aFinal) && Number.isFinite(bFinal) && aFinal > bFinal;
@@ -377,9 +408,9 @@ async function detailHTML(id, league) {
          <div class="side">${logo(b)}</div>
        </div>
        <div class="row">
-         ${teamCell(a.team?.displayName || "", aWin)}
+         ${teamCell(a.team?.displayName || "", aWin, `color:${textColor(colorOf(a.team))}`)}
          <div class="mid"></div>
-         ${teamCell(b.team?.displayName || "", bWin)}
+         ${teamCell(b.team?.displayName || "", bWin, `color:${textColor(colorOf(b.team))}`)}
        </div>`
     : `<h2>${esc(j.header?.name || "")}</h2>`;
 
@@ -393,41 +424,49 @@ async function detailHTML(id, league) {
     return Number.isFinite(n) ? n : null;
   });
   const va = valsOf(a), vb = valsOf(b);
-  const cellFor = (mine, other, i, win) => {
+  const cellFor = (mine, other, i) => {
     const v = mine[i];
     if (v === null) return "–";
     return other[i] !== null && v > other[i] ? `<b>${v}</b>` : `${v}`;
   };
   const qtRow = (c, mine, other, win) =>
-    `<tr><th class="${win ? "win" : ""}">${logo(c)}${esc(shortName(c))}</th>${heads.map((_, i) => `<td>${cellFor(mine, other, i)}</td>`).join("")}<td class="${win ? "win" : ""}">${esc(c.score ?? "")}</td></tr>`;
+    `<tr><th class="${win ? "win" : ""}" style="color:${textColor(colorOf(c.team))}">${logo(c)}${esc(shortName(c))}</th>${heads.map((_, i) => `<td>${cellFor(mine, other, i)}</td>`).join("")}<td class="${win ? "win" : ""}">${esc(c.score ?? "")}</td></tr>`;
   const qt = comps.length === 2
     ? `<table class="qt"><tr><th></th>${heads.map(h => `<th>${h}</th>`).join("")}<th>Final</th></tr>${qtRow(a, va, vb, aWin)}${qtRow(b, vb, va, bWin)}</table>`
     : "";
 
-  // Joueurs : un seul tableau, couleur par équipe
+  // Joueurs : un seul tableau, trié par PTS, REB, AST, STL, BLK, +/-
+  const SORT_KEYS = ["PTS", "REB", "AST", "STL", "BLK", "+/-"];
   const cols = [["PTS", "PTS"], ["REB", "REB"], ["AST", "AST"], ["STL", "Steals"], ["BLK", "Contres"], ["+/-", "+/-"]];
-  const playerRows = [];
+  const players = [];
   for (const team of (j.boxscore?.players || [])) {
     const block = team.statistics?.[0];
     const names = block?.names || [];
-    const color = team.team?.color ? `#${team.team.color}` : "";
-    const nameStyle = color
-      ? `border-left:4px solid ${color};padding-left:6px;color:${brightness(color) < 0.3 ? "var(--text)" : color}`
-      : "";
-    const athletes = (block?.athletes || [])
-      .filter(x => (x.stats || []).length)
-      .map(x => ({ name: x.athlete?.displayName || x.athlete?.shortName || "", stats: x.stats }))
-      .sort((x, y) => (parseInt(y.stats[names.indexOf("PTS")], 10) || 0) - (parseInt(x.stats[names.indexOf("PTS")], 10) || 0));
-    for (const p of athletes) {
-      const cells = cols.map(([k]) => {
-        const idx = names.indexOf(k);
-        return `<td>${idx >= 0 ? esc(p.stats[idx] ?? "") : ""}</td>`;
-      }).join("");
-      playerRows.push(`<tr><td class="pn" style="${nameStyle}">${esc(p.name)}</td>${cells}</tr>`);
+    const color = colorOf(team.team);
+    for (const x of (block?.athletes || [])) {
+      if (!(x.stats || []).length) continue;
+      const stats = x.stats;
+      const get = k => { const i = names.indexOf(k); return i >= 0 ? (stats[i] ?? "") : ""; };
+      players.push({ name: x.athlete?.displayName || x.athlete?.shortName || "", color, get });
     }
   }
-  const players = playerRows.length
-    ? `<table class="pl"><tr><th>Joueur</th>${cols.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr>${playerRows.join("")}</table>`
+  const num = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : -Infinity; };
+  players.sort((x, y) => {
+    for (const k of SORT_KEYS) {
+      const p = num(x.get(k)), q = num(y.get(k));
+      if (p !== q) return q > p ? 1 : -1;
+    }
+    return 0;
+  });
+  const playerRows = players.map(p => {
+    const nameStyle = p.color
+      ? `border-left:4px solid #${p.color.replace("#", "")};padding-left:6px;color:${textColor(p.color)}`
+      : "";
+    const cells = cols.map(([k]) => `<td>${esc(p.get(k))}</td>`).join("");
+    return `<tr><td class="pn" style="${nameStyle}">${esc(p.name)}</td>${cells}</tr>`;
+  }).join("");
+  const playersHTML = players.length
+    ? `<table class="pl"><tr><th>Joueur</th>${cols.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr>${playerRows}</table>`
     : `<p class="empty">Statistiques joueurs indisponibles pour ce match.</p>`;
 
   return `<section class="card">
@@ -436,7 +475,7 @@ async function detailHTML(id, league) {
     <p class="meta" style="text-align:center">${st.state === "in" ? '<span class="live">EN DIRECT</span>' : ""}${esc(st.shortDetail || st.detail || "")}</p>
     ${qt}
     <h3 class="sub-h">Joueurs</h3>
-    ${players}
+    ${playersHTML}
   </section>`;
 }
 
