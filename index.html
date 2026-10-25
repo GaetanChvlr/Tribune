@@ -36,7 +36,13 @@ h2{font-size:17px;margin:0 0 6px}
 h3.sub-h{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:16px 0 0}
 b{font-variant-numeric:tabular-nums}
 .pdot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:7px;vertical-align:middle;box-shadow:0 0 0 2px var(--card)}
-.ver{position:fixed;left:10px;bottom:calc(env(safe-area-inset-bottom) + 4px);font-size:11px;color:var(--muted);opacity:.7}
+.ver{position:fixed;right:10px;top:calc(env(safe-area-inset-top) + 6px);font-size:11px;color:var(--muted);opacity:.7}
+body{padding-bottom:calc(92px + env(safe-area-inset-bottom))!important}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;gap:4px;padding:6px 8px calc(env(safe-area-inset-bottom) + 6px);background:var(--card);box-shadow:0 -2px 12px rgba(15,23,42,.10)}
+.tabbar button{flex:1;min-width:0;border:0;background:none;color:var(--muted);font-size:11px;font-weight:600;padding:8px 0 6px;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.tabbar button .ic{font-size:18px;line-height:1}
+.tabbar button.on{color:var(--accent);background:var(--bg)}
+.nav.mv{padding:0 0 4px}
 
 /* Matchs : logos sur une ligne, noms (une ligne) puis rang en dessous */
 .match{padding:12px 0;border-bottom:1px solid #94a3b833;text-align:center;cursor:pointer}
@@ -127,10 +133,10 @@ table.qt th img{width:20px;height:20px;object-fit:contain;vertical-align:middle;
 </header>
 
 <div class="nav" id="leagues"></div>
-<div class="nav" id="tabs"></div>
+<nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.27</div>
+<div class="ver">v1.28</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -146,8 +152,7 @@ const LEAGUES = {
 };
 const TABS = [
   {key: "home", label: "Accueil"},
-  {key: "cal", label: "Calendrier"},
-  {key: "results", label: "Résultats"},
+  {key: "cal", label: "Matchs"},
   {key: "standings", label: "Classement"},
   {key: "stats", label: "Stats"},
   {key: "favs", label: "Favoris"}
@@ -168,7 +173,7 @@ const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 
 const state = {
   league: "NBA", tab: "home", detail: null, teamFilter: "",
-  homePeriod: "saison", calTeamFilter: "",
+  homePeriod: "saison", calTeamFilter: "", matchView: "cal",
   statsView: "leaders", statsPeriod: "nuit", statsKey: ""
 };
 let favs = loadFavs();           // équipes par championnat
@@ -828,6 +833,13 @@ async function detailHTML(id, league) {
   </section>`;
 }
 
+// Sélecteur Calendrier / Résultats à l'intérieur de l'onglet Matchs
+function mviewNav() {
+  const v = state.matchView;
+  return `<div class="nav mv">${[["cal", "Calendrier"], ["results", "Résultats"]].map(([k, l]) =>
+    `<button data-mview="${k}" class="${k === v ? "on" : ""}">${l}</button>`).join("")}</div>`;
+}
+
 function renderNav() {
   document.getElementById("leagues").innerHTML = Object.keys(LEAGUES).map(l =>
     `<button data-league="${esc(l)}" class="${l === state.league ? "on" : ""}">${esc(l)}</button>`).join("");
@@ -881,21 +893,21 @@ async function render(opts = {}) {
 
       if (state.tab === "home") {
         html = await homeHTML();
-      } else if (state.tab === "cal") {
+      } else if (state.tab === "cal" && state.matchView !== "results") {
         const evs = await loadEvents(L, today, addDays(today, 7));
         let teams = [];
         try { teams = await loadTeams(L); } catch (e) { teams = []; }
         const shown = evs.filter(e => !state.calTeamFilter || e.cs.some(c => c.name === state.calTeamFilter));
         const select = `<select class="filter" id="calTeamFilter"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}"${t === state.calTeamFilter ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
-        html = `<section class="card"><h2>Calendrier : 7 prochains jours</h2>${select}${shown.length ? shown.map(matchHTML).join("") : '<p class="empty">Aucun match prévu pour cette sélection.</p>'}</section>`;
-      } else if (state.tab === "results") {
+        html = `${mviewNav()}<section class="card"><h2>Calendrier : 7 prochains jours</h2>${select}${shown.length ? shown.map(matchHTML).join("") : '<p class="empty">Aucun match prévu pour cette sélection.</p>'}</section>`;
+      } else if (state.tab === "cal") {
         const evs = await loadEvents(L, seasonStart(LEAGUES[L].startMonth), addDays(today, -1));
         const played = evs.filter(e => e.state === "post" && e.stype !== 1).reverse();
         let teams = [];
         try { teams = await loadTeams(L); } catch (e) { teams = []; }
         const shown = played.filter(e => !state.teamFilter || e.cs.some(c => c.name === state.teamFilter));
         const select = `<select class="filter" id="teamFilter"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}"${t === state.teamFilter ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
-        html = `<section class="card"><h2>Résultats : saison en cours</h2>${select}${shown.length ? shown.map(matchHTML).join("") : '<p class="empty">Aucun résultat pour cette sélection.</p>'}</section>`;
+        html = `${mviewNav()}<section class="card"><h2>Résultats : saison en cours</h2>${select}${shown.length ? shown.map(matchHTML).join("") : '<p class="empty">Aucun résultat pour cette sélection.</p>'}</section>`;
       } else if (state.tab === "standings") {
         html = await standingsHTML(L);
       } else if (state.tab === "stats") {
@@ -921,6 +933,8 @@ appEl.addEventListener("click", e => {
   if (e.target.closest("[data-back]")) { state.detail = null; render(); return; }
   const m = e.target.closest(".match[data-id]");
   if (m) { state.detail = m.dataset.id; render(); return; }
+  const mv = e.target.closest("button[data-mview]");
+  if (mv) { state.matchView = mv.dataset.mview; render({silent: true}); return; }
   const hb = e.target.closest("button[data-home]");
   if (hb) { state.homePeriod = hb.dataset.home; render({silent: true}); return; }
   const sp = e.target.closest("button[data-stat]");
