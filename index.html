@@ -108,10 +108,30 @@ function parseEvent(ev) {
   };
 }
 
+async function loadDay(path, d) {
+  const j = await getJSON(`${SCORES}${path}/scoreboard?dates=${ymd(d)}`);
+  return j.events || [];
+}
+
 async function loadEvents(league, from, to) {
-  const L = LEAGUES[league];
-  const j = await getJSON(`${SCORES}${L.path}/scoreboard?dates=${ymd(from)}-${ymd(to)}&limit=1000`);
-  return (j.events || []).map(parseEvent).sort((a, b) => a.date - b.date);
+  const path = LEAGUES[league].path;
+  let raw;
+  try {
+    // Requête sur la plage entière
+    const j = await getJSON(`${SCORES}${path}/scoreboard?dates=${ymd(from)}-${ymd(to)}`);
+    raw = j.events || [];
+  } catch (e) {
+    // Repli : une requête par jour (plus lent, mais plus robuste)
+    const days = [];
+    for (let d = new Date(from); d <= to; d = addDays(d, 1)) days.push(new Date(d));
+    const results = await Promise.allSettled(days.map(d => loadDay(path, d)));
+    raw = results.filter(r => r.status === "fulfilled").flatMap(r => r.value);
+    if (!raw.length && results.length && results.every(r => r.status === "rejected")) throw e;
+  }
+  // Dédoublonnage par identifiant d'événement
+  const seen = new Set();
+  const unique = raw.filter(ev => (seen.has(ev.id) ? false : seen.add(ev.id)));
+  return unique.map(parseEvent).sort((a, b) => a.date - b.date);
 }
 
 function isFav(text, league) {
