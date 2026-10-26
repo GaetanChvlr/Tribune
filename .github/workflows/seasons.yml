@@ -1,0 +1,63 @@
+name: Saisons passées
+
+# Construit les données des saisons passées (une par job, en parallèle), puis le classement All Time.
+# À lancer à la main depuis l'onglet Actions, une fois ou après une correction des données.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  saison:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        annee: [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Récupérer la saison ${{ matrix.annee }}
+        run: node scripts/build-games.mjs ${{ matrix.annee }}
+
+      - name: Enregistrer la saison ${{ matrix.annee }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || git commit -m "Saison ${{ matrix.annee }}-$(( (${{ matrix.annee }} + 1) % 100 ))"
+          for i in 1 2 3 4 5; do
+            git pull --rebase -q origin main && git push -q origin HEAD:main && break
+            sleep $((i * 5))
+          done
+
+  alltime:
+    needs: saison
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Calculer le classement All Time
+        run: node scripts/build-alltime.mjs
+
+      - name: Enregistrer le classement All Time
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || git commit -m "Classement All Time"
+          for i in 1 2 3 4 5; do
+            git pull --rebase -q origin main && git push -q origin HEAD:main && break
+            sleep $((i * 5))
+          done

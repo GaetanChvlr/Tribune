@@ -35,10 +35,9 @@ jobs:
         if: steps.tz.outputs.run == 'true'
         run: node scripts/build-games.mjs
 
-      - name: Récupérer la saison 2025-26 (une seule fois)
+      - name: Calculer le classement All Time
         if: steps.tz.outputs.run == 'true'
-        run: |
-          if [ ! -f data/games-2025-26.json ]; then node scripts/build-games.mjs 2025; fi
+        run: node scripts/build-alltime.mjs
 
       - name: Enregistrer data/games.json
         if: steps.tz.outputs.run == 'true'

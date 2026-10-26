@@ -6,7 +6,8 @@
 //
 // Colonnes de chaque ligne (dans cet ordre) :
 // jour (AAAA-MM-JJ, fuseau de New York), joueur, équipe, équipe (court), adversaire (court),
-// score de l'équipe, score de l'adversaire, PTS, REB, AST, STL, BLK, 3PT réussis, Game Score
+// score de l'équipe, score de l'adversaire, PTS, REB, AST, STL, BLK, 3PT réussis, Game Score, phase
+// (regular = saison régulière, playoffs = séries éliminatoires ; les autres types sont ignorés)
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -16,7 +17,7 @@ const ARG = process.argv[2];   // année de début de la saison passée, ex. 202
 const TZ = "America/New_York";
 
 const COLUMNS = ["jour", "joueur", "equipe", "equipe_court", "adversaire", "score_equipe", "score_adversaire",
-  "pts", "reb", "ast", "stl", "blk", "tpm", "gmsc", "couleur", "couleur_alt"];
+  "pts", "reb", "ast", "stl", "blk", "tpm", "gmsc", "couleur", "couleur_alt", "phase"];
 
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
 const usDay = date => dayFmt.format(date); // "AAAA-MM-JJ"
@@ -73,7 +74,7 @@ function gameScore(names, stats) {
     + 0.7 * num(g("AST")) + 0.7 * num(g("BLK")) - 0.4 * num(g("PF")) - turnovers;
 }
 
-async function rowsOfEvent(id, dayKey) {
+async function rowsOfEvent(id, dayKey, phase) {
   const j = await getJSON(`${BASE}/summary?event=${id}`);
   const comps = j.header?.competitions?.[0]?.competitors ?? [];
   const rows = [];
@@ -109,7 +110,8 @@ async function rowsOfEvent(id, dayKey) {
         made(st("3PT"))[0],
         round1(gameScore(names, x.stats)),
         team.team?.color ?? me?.team?.color ?? "",
-        team.team?.alternateColor ?? me?.team?.alternateColor ?? ""
+        team.team?.alternateColor ?? me?.team?.alternateColor ?? "",
+        phase
       ]);
     }
   }
@@ -129,13 +131,14 @@ async function main() {
   for (let day = start; day <= last; day = addDaysStr(day, 1)) {
     const sb = await getJSON(`${BASE}/scoreboard?dates=${compact(day)}`);
     for (const ev of sb.events ?? []) {
-      if (ev.season?.type === 1) continue;                 // présaison exclue
+      const phase = ev.season?.type === 2 ? "regular" : ev.season?.type === 3 ? "playoffs" : null;
+      if (!phase) continue;                                // présaison et autres types exclus
       if (ev.status?.type?.state !== "post") continue;     // matchs terminés seulement
       if (seen.has(ev.id)) continue;
       seen.add(ev.id);
       const dayKey = usDay(new Date(ev.date));
       try {
-        rows.push(...await rowsOfEvent(ev.id, dayKey));
+        rows.push(...await rowsOfEvent(ev.id, dayKey, phase));
         games++;
       } catch (e) {
         skipped++;
