@@ -176,7 +176,7 @@ h2.ph{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.70</div>
+<div class="ver">v1.71</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1562,46 +1562,56 @@ async function teamHTML(name) {
 }
 
 // ---------- All-Star : 16 Américains et 8 internationaux, selon le Game Score moyen ----------
-const athleteCountry = new Map(); // pays des joueurs (fiche ESPN), en mémoire
 const ALLSTAR_MIN_GAMES = 3;   // matchs minimum pour être retenu
 const ALLSTAR_US = 16, ALLSTAR_INTL = 8;
+// Nationalités des internationaux, établies de mémoire (à vérifier). Les joueurs absents sont comptés comme américains.
+const NAT_BY_COUNTRY = {
+  CAN: ["Shai Gilgeous-Alexander", "Jamal Murray", "Andrew Wiggins", "RJ Barrett", "Luguentz Dort", "Nickeil Alexander-Walker", "Dillon Brooks", "Kelly Olynyk", "Andrew Nembhard", "Dwight Powell", "Brandon Clarke", "Trey Lyles", "Oshae Brissett"],
+  SRB: ["Nikola Jokić", "Bogdan Bogdanović", "Nikola Milutinov"],
+  MNE: ["Nikola Vučević"],
+  FRA: ["Victor Wembanyama", "Rudy Gobert", "Evan Fournier", "Frank Ntilikina", "Nicolas Batum", "Bilal Coulibaly", "Guerschon Yabusele", "Zaccharie Risacher", "Killian Hayes", "Moussa Diabaté", "Théo Maledon", "Alexandre Sarr", "Rayan Rupert"],
+  GRE: ["Giannis Antetokounmpo", "Thanasis Antetokounmpo", "Kostas Antetokounmpo", "Kostas Papanikolaou", "Georgios Papagiannis"],
+  SVN: ["Luka Dončić", "Goran Dragić", "Klemen Prepelič"],
+  GER: ["Dennis Schröder", "Franz Wagner", "Moritz Wagner", "Daniel Theis", "Isaac Bonga", "Maxi Kleber", "Johannes Voigtmann"],
+  AUS: ["Josh Giddey", "Patty Mills", "Joe Ingles", "Ben Simmons", "Dante Exum", "Jock Landale"],
+  ESP: ["Ricky Rubio", "Willy Hernangómez", "Juancho Hernangómez", "Santi Aldama", "Sergio Llull", "Alex Abrines"],
+  ITA: ["Danilo Gallinari", "Nicolò Melli", "Simone Fontecchio"],
+  CMR: ["Pascal Siakam", "Joel Embiid", "Luc Mbah a Moute"],
+  NGA: ["Precious Achiuwa"],
+  BIH: ["Jusuf Nurkić"],
+  TUR: ["Furkan Korkmaz", "Ersan İlyasova", "Cedi Osman", "Alperen Şengün", "Omer Yurtseven"],
+  LTU: ["Jonas Valančiūnas", "Domantas Sabonis"],
+  LVA: ["Kristaps Porziņģis"],
+  CRO: ["Dario Šarić", "Mario Hezonja", "Ivica Zubac"],
+  CZE: ["Tomáš Satoranský"],
+  ARG: ["Facundo Campazzo", "Luis Scola", "Nicolás Laprovittola"],
+  JPN: ["Yuta Watanabe", "Rui Hachimura"],
+  UKR: ["Svi Mykhailiuk"],
+  ISR: ["Deni Avdija"],
+  FIN: ["Lauri Markkanen"],
+  NZL: ["Steven Adams"],
+  GEO: ["Goga Bitadze"],
+  SRB2: []
+};
+const normName = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+const NAT_OF = new Map(Object.entries(NAT_BY_COUNTRY).flatMap(([c, names]) => names.map(n => [normName(n), c])));
+
 async function allStarHTML() {
   const data = await loadGames();
-  const teams = await loadTeams("NBA");
-  const res = await Promise.allSettled(teams.map(t => rosterOf(t)));
-  const countryOf = new Map(), idOf = new Map();
-  for (const r of res) {
-    if (r.status === "fulfilled") for (const p of r.value) { countryOf.set(p.name, p.country); idOf.set(p.name, p.id); }
-  }
-  // Pays absent de l'effectif : fiche de chaque joueur (les mieux classés seulement)
-  const ranked = averages(data.rows, ALLSTAR_MIN_GAMES).sort((a, b) => b.avg.gs - a.avg.gs);
-  const missing = ranked.filter(p => !countryOf.get(p.name) && idOf.get(p.name)).slice(0, 120);
-  await Promise.allSettled(missing.map(async p => {
-    if (!athleteCountry.has(p.name)) {
-      try {
-        const j = await getJSON(`https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${idOf.get(p.name)}`);
-        athleteCountry.set(p.name, j.athlete?.birthPlace?.country || "");
-      } catch (e) { athleteCountry.set(p.name, ""); }
-    }
-    if (!countryOf.get(p.name)) countryOf.set(p.name, athleteCountry.get(p.name));
-  }));
-  const isUS = c => /^(usa|us|united states|états-unis|etats-unis)$/i.test(String(c || "").trim());
+  if (!data.rows.length) return '<section class="card"><p class="empty">Données pas encore disponibles pour cette saison.</p></section>';
   const eligible = averages(data.rows, ALLSTAR_MIN_GAMES).sort((a, b) => b.avg.gs - a.avg.gs);
-  const us = eligible.filter(p => isUS(countryOf.get(p.name))).slice(0, ALLSTAR_US);
-  const intl = eligible.filter(p => { const c = countryOf.get(p.name); return c && !isUS(c); }).slice(0, ALLSTAR_INTL);
-  const unknown = eligible.filter(p => !countryOf.get(p.name)).length;
+  const countryOf = p => NAT_OF.get(normName(p.name)) || "USA";
+  const us = eligible.filter(p => countryOf(p) === "USA").slice(0, ALLSTAR_US);
+  const intl = eligible.filter(p => countryOf(p) !== "USA").slice(0, ALLSTAR_INTL);
 
-  const table = list => list.length
+  const table = (list, withCountry) => list.length
     ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>GmSc</th><th>Pts</th></tr>${list.map(p =>
-        `<tr><td>${pdot(p.pc, p.pa)}<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.teamShort))}</a></td><td><b>${esc(f1(p.avg.gs))}</b></td><td>${esc(f1(p.avg.pts))}</td></tr>`).join("")}</table>`
+        `<tr><td>${pdot(p.pc, p.pa)}<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.teamShort))}</a>${withCountry ? ` <span class="meta">${esc(countryOf(p))}</span>` : ""}</td><td><b>${esc(f1(p.avg.gs))}</b></td><td>${esc(f1(p.avg.pts))}</td></tr>`).join("")}</table>`
     : '<p class="empty">Aucun joueur qualifié.</p>';
 
-  if (!data.rows.length) {
-    return `<section class="card"><p class="empty">Données pas encore disponibles pour cette saison.</p></section>`;
-  }
-  return `<section class="card"><h2>Américains (${us.length}/${ALLSTAR_US})</h2>${table(us)}</section>
-    <section class="card"><h2>Internationaux (${intl.length}/${ALLSTAR_INTL})</h2>${table(intl)}</section>
-    <p class="meta">Sélection indicative selon le Game Score moyen de la saison (${ALLSTAR_MIN_GAMES} matchs minimum). Le vrai All-Star dépend des votes.${unknown ? ` ${unknown} joueur(s) sans pays renseigné sont exclus.` : ""}</p>`;
+  return `<section class="card"><h2>Américains (${us.length}/${ALLSTAR_US})</h2>${table(us, false)}</section>
+    <section class="card"><h2>Internationaux (${intl.length}/${ALLSTAR_INTL})</h2>${table(intl, true)}</section>
+    <p class="meta">Sélection indicative selon le Game Score moyen de la saison (${ALLSTAR_MIN_GAMES} matchs minimum). Nationalités établies de mémoire : les joueurs absents de la liste sont comptés comme américains. Le vrai All-Star dépend des votes.</p>`;
 }
 
 function scheduleRefresh() {
