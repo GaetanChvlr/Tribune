@@ -1,4 +1,6 @@
-// Récupère les feuilles de match ESPN NBA de la saison en cours et écrit data/games.json :
+// Récupère les feuilles de match ESPN NBA d'une saison et écrit ses données joueurs :
+// node scripts/build-games.mjs        → saison en cours, écrit data/games.json (chaque nuit)
+// node scripts/build-games.mjs 2025   → saison 2025-26, écrit data/games-2025-26.json (une fois)
 // une ligne par joueur et par match. L'appli calcule ensuite MVP, leaders et grosses perfs.
 // Lancé chaque nuit par GitHub Actions.
 //
@@ -10,7 +12,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba";
-const OUT = "data/games.json";
+const ARG = process.argv[2];   // année de début de la saison passée, ex. 2025
 const TZ = "America/New_York";
 
 const COLUMNS = ["jour", "joueur", "equipe", "equipe_court", "adversaire", "score_equipe", "score_adversaire",
@@ -39,10 +41,11 @@ async function getJSON(url) {
   }
 }
 
-// Saison en cours : débute le 1er octobre de l'année de la saison (ex. 2026-27)
+// Saison : débute le 1er octobre de l'année de la saison (ex. 2026-27)
 function seasonBounds(now) {
-  const y = now.getUTCMonth() >= 9 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
-  return { start: `${y}-10-01`, label: `${y}-${String((y + 1) % 100).padStart(2, "0")}` };
+  const y = ARG ? Number(ARG) : (now.getUTCMonth() >= 9 ? now.getUTCFullYear() : now.getUTCFullYear() - 1);
+  const label = `${y}-${String((y + 1) % 100).padStart(2, "0")}`;
+  return { start: `${y}-10-01`, end: `${y + 1}-06-30`, label, out: ARG ? `data/games-${label}.json` : "data/games.json" };
 }
 
 // "5-12" -> [5, 12]
@@ -116,13 +119,14 @@ async function rowsOfEvent(id, dayKey) {
 async function main() {
   const now = new Date();
   const todayKey = usDay(now);
-  const { start, label } = seasonBounds(now);
+  const { start, end, label, out: OUT } = seasonBounds(now);
+  const last = todayKey < end ? todayKey : end;
 
   const rows = [];
   const seen = new Set();
   let games = 0, skipped = 0;
 
-  for (let day = start; day <= todayKey; day = addDaysStr(day, 1)) {
+  for (let day = start; day <= last; day = addDaysStr(day, 1)) {
     const sb = await getJSON(`${BASE}/scoreboard?dates=${compact(day)}`);
     for (const ev of sb.events ?? []) {
       if (ev.season?.type === 1) continue;                 // présaison exclue

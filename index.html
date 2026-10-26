@@ -176,7 +176,7 @@ h2.ph{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.71</div>
+<div class="ver">v1.72</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -214,7 +214,7 @@ const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 const state = {
   league: "NBA", tab: "home", detail: null, teamFilter: "",
   screen: "app", homePeriod: "saison", calTeamFilter: "", matchView: "cal", raceId: null,
-  statsView: "leaders", statsPeriod: "nuit", statsKey: "", calWeek: null, resWeek: null, profile: null
+  statsView: "leaders", statsPeriod: "nuit", statsKey: "", calWeek: null, resWeek: null, profile: null, season: "current"
 };
 let favs = loadFavs();           // équipes par championnat
 let players = loadPlayers();     // joueurs favoris
@@ -602,27 +602,42 @@ async function loadTeams(league) {
 
 // ---------- Données joueurs (games.json) ----------
 
+// Fichiers de données joueurs : saison en cours et saison 2025-26 (passée)
+const GAMES_FILE = { current: "data/games.json", prev: "data/games-2025-26.json" };
+const ALLSTAR_2026_DAY = "2026-02-15";   // All-Star Game 2026 (Intuit Dome) : matchs avant cette date
+let GAMES_PREV = null;
+// Lit un fichier de données joueurs et le met au format de l'appli
+async function readGamesFile(file) {
+  const r = await fetch(`${file}?t=${Date.now()}`, {cache: "no-store"});
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const j = await r.json();
+  const cols = j.columns || [];
+  const idx = Object.fromEntries(cols.map((c, i) => [c, i]));
+  const rows = (j.rows || []).map(a => ({
+    day: a[idx.jour], name: a[idx.joueur], team: a[idx.equipe], teamShort: a[idx.equipe_court],
+    opp: a[idx.adversaire], ts: a[idx.score_equipe], os: a[idx.score_adversaire],
+    pts: a[idx.pts], reb: a[idx.reb], ast: a[idx.ast], stl: a[idx.stl], blk: a[idx.blk],
+    tpm: a[idx.tpm], gs: a[idx.gmsc], pc: a[idx.couleur] || "", pa: a[idx.couleur_alt] || ""
+  }));
+  return { season: j.seasonLabel || "", updated: j.updated || "", rows };
+}
+// Données de la saison choisie dans la barre (en cours par défaut)
 async function loadGames() {
   if (GAMES) return GAMES;
   try {
-    const r = await fetch(`data/games.json?t=${Date.now()}`, {cache: "no-store"});
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const j = await r.json();
-    const cols = j.columns || [];
-    const idx = Object.fromEntries(cols.map((c, i) => [c, i]));
-    const rows = (j.rows || []).map(a => ({
-      day: a[idx.jour], name: a[idx.joueur], team: a[idx.equipe], teamShort: a[idx.equipe_court],
-      opp: a[idx.adversaire], ts: a[idx.score_equipe], os: a[idx.score_adversaire],
-      pts: a[idx.pts], reb: a[idx.reb], ast: a[idx.ast], stl: a[idx.stl], blk: a[idx.blk],
-      tpm: a[idx.tpm], gs: a[idx.gmsc], pc: a[idx.couleur] || "", pa: a[idx.couleur_alt] || ""
-    }));
-    GAMES = { season: j.seasonLabel || "", updated: j.updated || "", rows };
+    GAMES = await readGamesFile(GAMES_FILE[state.season === "prev" ? "prev" : "current"]);
     GAMES_ERR = null;
   } catch (e) {
     GAMES_ERR = e.message;
     GAMES = { season: "", updated: "", rows: [] };
   }
   return GAMES;
+}
+// Saison 2025-26, toujours disponible (page All-Star)
+async function loadPrevGames() {
+  if (GAMES_PREV) return GAMES_PREV;
+  GAMES_PREV = await readGamesFile(GAMES_FILE.prev);
+  return GAMES_PREV;
 }
 
 // Semaine (lundi → dimanche) et mois, à partir d'une date AAAA-MM-JJ
@@ -1427,7 +1442,8 @@ function mviewNav() {
 
 function renderNav() {
   document.getElementById("leagues").innerHTML = `<button class="navback" data-landing aria-label="Accueil">⌂</button>` + Object.keys(LEAGUES).map(l =>
-    `<button data-league="${esc(l)}" class="${l === state.league ? "on" : ""}">${esc(l)}</button>`).join("");
+    `<button data-league="${esc(l)}" class="${l === state.league ? "on" : ""}">${esc(l)}</button>`).join("")
+    + `<button data-season="1" class="${state.season === "prev" ? "on" : ""}">${state.season === "prev" ? "2026-27" : "2025-26"}</button>`;
   document.getElementById("tabs").innerHTML = TABS.map(t =>
     `<button data-tab="${t.key}" class="${!state.detail && t.key === state.tab ? "on" : ""}">${esc(t.label)}</button>`).join("");
 }
@@ -1527,10 +1543,12 @@ async function teamHTML(name) {
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
   let upcoming = [];
-  try {
-    const evs = await loadEvents(L, today, addDays(today, 21));
-    upcoming = evs.filter(e => e.state === "pre" && e.cs.some(c => c.name === name));
-  } catch (e) {}
+  if (state.season !== "prev") {
+    try {
+      const evs = await loadEvents(L, today, addDays(today, 21));
+      upcoming = evs.filter(e => e.state === "pre" && e.cs.some(c => c.name === name));
+    } catch (e) {}
+  }
 
   const avgs = averages(rows, 1);
   const best = [...avgs].sort((x, y) => y.avg.gs - x.avg.gs).slice(0, 5);
@@ -1597,21 +1615,23 @@ const normName = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").t
 const NAT_OF = new Map(Object.entries(NAT_BY_COUNTRY).flatMap(([c, names]) => names.map(n => [normName(n), c])));
 
 async function allStarHTML() {
-  const data = await loadGames();
-  if (!data.rows.length) return '<section class="card"><p class="empty">Données pas encore disponibles pour cette saison.</p></section>';
-  const eligible = averages(data.rows, ALLSTAR_MIN_GAMES).sort((a, b) => b.avg.gs - a.avg.gs);
+  let data;
+  try { data = await loadPrevGames(); } catch (e) { data = { rows: [] }; }
+  const before = data.rows.filter(r => r.day < ALLSTAR_2026_DAY);
+  if (!before.length) return '<section class="card"><p class="empty">Données de la saison 2025-26 pas encore disponibles.</p></section>';
+  const eligible = averages(before, ALLSTAR_MIN_GAMES).sort((a, b) => b.avg.gs - a.avg.gs);
   const countryOf = p => NAT_OF.get(normName(p.name)) || "USA";
   const us = eligible.filter(p => countryOf(p) === "USA").slice(0, ALLSTAR_US);
   const intl = eligible.filter(p => countryOf(p) !== "USA").slice(0, ALLSTAR_INTL);
 
   const table = (list, withCountry) => list.length
-    ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>GmSc</th><th>Pts</th></tr>${list.map(p =>
-        `<tr><td>${pdot(p.pc, p.pa)}<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.teamShort))}</a>${withCountry ? ` <span class="meta">${esc(countryOf(p))}</span>` : ""}</td><td><b>${esc(f1(p.avg.gs))}</b></td><td>${esc(f1(p.avg.pts))}</td></tr>`).join("")}</table>`
+    ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>GmSc</th></tr>${list.map(p =>
+        `<tr><td>${pdot(p.pc, p.pa)}<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.teamShort))}</a>${withCountry ? ` <span class="meta">${esc(countryOf(p))}</span>` : ""}</td><td><b>${esc(f1(p.avg.gs))}</b></td></tr>`).join("")}</table>`
     : '<p class="empty">Aucun joueur qualifié.</p>';
 
   return `<section class="card"><h2>Américains (${us.length}/${ALLSTAR_US})</h2>${table(us, false)}</section>
     <section class="card"><h2>Internationaux (${intl.length}/${ALLSTAR_INTL})</h2>${table(intl, true)}</section>
-    <p class="meta">Sélection indicative selon le Game Score moyen de la saison (${ALLSTAR_MIN_GAMES} matchs minimum). Nationalités établies de mémoire : les joueurs absents de la liste sont comptés comme américains. Le vrai All-Star dépend des votes.</p>`;
+    <p class="meta">All-Star 2026 · saison 2025-26 jusqu'au 15 février 2026 · Game Score moyen (${ALLSTAR_MIN_GAMES} matchs minimum). Nationalités établies de mémoire : les joueurs absents de la liste sont comptés comme américains. Le vrai All-Star dépend des votes.</p>`;
 }
 
 function scheduleRefresh() {
@@ -1795,6 +1815,11 @@ appEl.addEventListener("toggle", e => {
 
 document.getElementById("leagues").addEventListener("click", e => {
   if (e.target.closest("[data-landing]")) { state.screen = "landing"; render(); return; }
+  if (e.target.closest("[data-season]")) {
+    state.season = state.season === "prev" ? "current" : "prev";
+    state.statsKey = ""; state.profile = null; state.detail = null;
+    GAMES = null; render(); return;
+  }
   const b = e.target.closest("button[data-league]");
   if (b) { state.league = b.dataset.league; state.profile = null; state.detail = null; state.teamFilter = ""; state.calTeamFilter = ""; render(); }
 });
