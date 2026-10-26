@@ -16,6 +16,9 @@ const BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba";
 const ARG = process.argv[2];   // année de début de la saison passée, ex. 2025
 const TZ = "America/New_York";
 
+// Noms des matchs du week-end All-Star (ESPN : « Eastern Conf All-Stars at Western Conf All-Stars », « World World at Team Stars », etc.)
+const ALLSTAR_RE = /all-?stars?|team stars|team stripes|^world\b/i;
+
 const COLUMNS = ["jour", "joueur", "equipe", "equipe_court", "adversaire", "score_equipe", "score_adversaire",
   "pts", "reb", "ast", "stl", "blk", "tpm", "gmsc", "couleur", "couleur_alt", "phase", "match", "logo"];
 
@@ -136,11 +139,14 @@ async function main() {
   for (let day = start; day <= last; day = addDaysStr(day, 1)) {
     const sb = await getJSON(`${BASE}/scoreboard?dates=${compact(day)}`);
     for (const ev of sb.events ?? []) {
-      // All-Star Game : dernier match du week-end (le Rising Stars et les autres matchs de l'événement sont exclus)
+      // Les matchs du week-end All-Star sont classés en saison régulière par ESPN : on les écarte des données.
+      // Le dernier match du week-end (en janvier-mars) donne la date de coupure du All-Star.
       const evName = `${ev.name ?? ""} ${ev.shortName ?? ""}`;
-      if (/all-star/i.test(evName) && !/rising|celebrity|skills|shooting|dunk|three/i.test(evName)) {
+      const isAsEvent = ALLSTAR_RE.test(evName) && !/rising|celebrity|skills|shooting|dunk|three/i.test(evName);
+      if (isAsEvent) {
         const d = usDay(new Date(ev.date));
-        if (!allstar || d > allstar) allstar = d;
+        if (["01", "02", "03"].includes(d.slice(5, 7)) && (!allstar || d > allstar)) allstar = d;
+        continue;
       }
       const phase = ev.season?.type === 2 ? "regular" : ev.season?.type === 3 ? "playoffs" : null;
       if (!phase) continue;                                // présaison et autres types exclus
