@@ -1,9 +1,11 @@
 name: Saisons passées
 
 # Construit les données des saisons passées (une par job, en parallèle), puis le classement All Time.
-# À lancer à la main depuis l'onglet Actions, une fois ou après une correction des données.
+# Chaque dimanche à 3h (heure de Paris en hiver : 2h UTC), et à la main depuis l'onglet Actions après une correction.
 
 on:
+  schedule:
+    - cron: "0 2 * * 0"   # dimanche 2h UTC (3h à Paris en hiver, 4h en été)
   workflow_dispatch:
 
 permissions:
