@@ -188,7 +188,7 @@ table.tbl td.win{font-weight:700}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.80</div>
+<div class="ver">v1.81</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -225,7 +225,7 @@ const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 const state = {
   league: "NBA", tab: "home", detail: null, teamFilter: "",
   screen: "app", homePeriod: "saison", calTeamFilter: "", matchView: "cal", raceId: null,
-  statsView: "leaders", atView: "moy", statsPeriod: "nuit", statsKey: "", calWeek: null, resWeek: null, profile: null, season: "2026-27", phase: "regular", cmp: { a: { season: "2026-27", phase: "regular", player: "" }, b: { season: "2025-26", phase: "regular", player: "" } }
+  statsView: "alltime", statsPeriod: "nuit", statsKey: "", calWeek: null, resWeek: null, profile: null, season: "2026-27", phase: "regular", cmp: { a: { season: "2026-27", phase: "regular", player: "" }, b: { season: "2025-26", phase: "regular", player: "" } }
 };
 let favs = loadFavs();           // équipes par championnat
 let players = loadPlayers();     // joueurs favoris
@@ -1070,13 +1070,6 @@ function homePlayersHTML(data) {
 
 async function homeHTML() {
   const L = state.league;
-  // Saison terminée : finales et performances de la saison, rien de la saison en cours
-  if (L === "NBA" && state.season !== CURRENT_SEASON) {
-    try { await loadTeams(L); } catch (e) {}   // logos des équipes
-    const data = await loadGames();
-    const fin = await finalsHTML(state.season);
-    return fin + `<div class="cols"><div class="col">${seasonTopHTML(data)}</div><div class="col">${homePlayersHTML(data)}</div></div>`;
-  }
   let matches = "";
   try { matches = await homeMatchesHTML(L); }
   catch (e) { matches = `<section class="card"><p class="empty">Matchs indisponibles : ${esc(e.message)}</p></section>`; }
@@ -1088,44 +1081,6 @@ async function homeHTML() {
 // Message quand une saison n'a pas encore de données
 function noDataText() {
   return "Données pas encore disponibles.";
-}
-
-// Programme d'une saison terminée : tous ses matchs (joueurs de la saison et de la phase choisies)
-async function pastResultsHTML() {
-  const data = await loadGames();
-  const matches = new Map();
-  for (const r of data.rows) {
-    const k = `${r.day}|${[r.team, r.opp].sort().join("|")}`;
-    if (!matches.has(k)) {
-      matches.set(k, { id: r.event || k, name: "", date: new Date(r.day + "T12:00:00"), detail: "Terminé", state: "post", stype: null,
-        cs: [
-          { name: r.team, score: r.ts, logo: TEAM_LOGOS[r.team] || "" },
-          { name: r.opp, score: r.os, logo: TEAM_LOGOS[r.opp] || "" }
-        ] });
-    }
-  }
-  const all = [...matches.values()].sort((a, b) => b.date - a.date);
-  const teams = [...new Set(data.rows.flatMap(r => [r.team, r.opp]))].sort((a, b) => a.localeCompare(b, "fr"));
-  const shown = all.filter(e => !state.teamFilter || e.cs.some(c => c.name === state.teamFilter));
-  const select = `<select class="filter" id="teamFilter"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}"${t === state.teamFilter ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
-  const body = shown.map(e => matchHTML(e)).join("");
-  const empty = data.rows.length ? "Aucun match pour cette sélection." : noDataText();
-  return `<section class="card"><h2>Matchs : ${esc(state.season)}</h2><p class="meta">${phaseLabel()}</p>${select}${shown.length ? body : `<p class="empty">${empty}</p>`}</section>`;
-}
-
-// Meilleures performances individuelles de la saison (Game Score), pour l'accueil d'une saison terminée
-function seasonTopHTML(data) {
-  if (!data.rows.length) {
-    return `<section class="card"><h2>Meilleures performances</h2><p class="empty">${esc(noDataText())}</p></section>`;
-  }
-  const items = [...data.rows].sort((a, b) => b.gs - a.gs).slice(0, 5).map((r, i) => `
-    <div class="pl-row">
-      <div class="pl-name">${i + 1}. ${pdot(r.pc, r.pa)}<a class="lnk" data-player="${esc(r.name)}">${esc(r.name)}</a></div>
-      <div class="pl-line"><a class="lnk" data-team="${esc(r.team)}">${esc(ab(r.teamShort))}</a> ${esc(r.ts)}-${esc(r.os)} ${esc(ab(r.opp))} · ${esc(shortDay(r.day))}</div>
-      <div class="pl-line">GmSc <b>${esc(f1(r.gs))}</b></div>
-      <div class="pl-line">${esc(r.pts)} pts · ${esc(r.reb)} reb · ${esc(r.ast)} ast</div>
-    </div>`).join("");
-  return `<section class="card"><h2>Meilleures performances</h2><p class="meta">${esc(state.season)} · ${phaseLabel()} · classées par Game Score</p>${items}</section>`;
 }
 
 // ---------- Visuel Instagram (1080 × 1350), un top par visuel ----------
@@ -1222,64 +1177,6 @@ async function shareVisual(kind) {
   a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
-}
-
-// ---------- Stats (leaders, grosses perfs, MVP) ----------
-
-async function statsHTML() {
-  if (["alltime", "compare", "allstar"].includes(state.statsView)) return statsWide();
-  if (state.league !== "NBA") return '<section class="card"><p class="empty">Statistiques joueurs bientôt disponibles pour ce championnat.</p></section>';
-  const data = await loadGames();
-  const per = state.statsPeriod;
-  const nav = `<div class="nav">${PERIODS.map(([k, l]) =>
-    `<button data-stat="${k}" class="${k === per ? "on" : ""}">${l}</button>`).join("")}</div>`;
-  const views = statsViewsHTML();
-
-  if (!data.rows.length) {
-    return `${nav}<section class="card"><p class="empty">${esc(noDataText())}</p></section>`;
-  }
-
-  const keys = periodKeys(per, data.rows);
-  if (!state.statsKey || !keys.includes(state.statsKey)) state.statsKey = keys[0];
-  const select = `<select class="filter" id="statsKey">${keys.map(k =>
-    `<option value="${esc(k)}"${k === state.statsKey ? " selected" : ""}>${esc(periodLabel(per, k))}</option>`).join("")}</select>`;
-  const subset = data.rows.filter(r => periodKeyOf(per, r.day) === state.statsKey);
-  const minGames = per === "mois" || per === "saison" ? 3 : 1;
-  const minText = minGames === 3 ? "moyenne par match, 3 matchs minimum" : "moyenne par match, 1 match minimum";
-
-  let body = "";
-  if (state.statsView === "leaders") {
-    const avgs = averages(subset, minGames);
-    body = CATS.map(c => {
-      const list = [...avgs].sort((a, b) => b.avg[c.key] - a.avg[c.key]).slice(0, 5);
-      const rows = list.map((p, i) =>
-        `<tr><td>${i + 1}. ${pdot(p.pc, p.pa)}<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.teamShort))}</a></td><td><b>${esc(f1(p.avg[c.key]))}</b></td><td>${p.games}</td></tr>`).join("");
-      return `<section class="card"><h2>${esc(c.label)}</h2>${list.length
-        ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>Moy.</th><th>Matchs</th></tr>${rows}</table>`
-        : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
-    }).join("");
-    body = `<p class="meta">Top 5 par catégorie · ${minText}</p>` + body;
-  } else if (state.statsView === "perfs") {
-    body = CATS.map(c => {
-      const list = [...subset].sort((a, b) => b[c.key] - a[c.key]).slice(0, 5);
-      const rows = list.map((r, i) =>
-        `<tr><td>${i + 1}. ${pdot(r.pc, r.pa)}<a class="lnk" data-player="${esc(r.name)}">${esc(r.name)}</a></td><td><b>${esc(r[c.key])}</b></td><td>${matchText(r)}</td></tr>`).join("");
-      return `<section class="card"><h2>${esc(c.label)}</h2>${list.length
-        ? `<table class="tbl"><tr><th>Joueur</th><th>Valeur</th><th>Match</th></tr>${rows}</table>`
-        : '<p class="empty">Aucune performance.</p>'}</section>`;
-    }).join("");
-    body = `<p class="meta">Meilleure performance d'un seul match, top 5 par catégorie</p>` + body;
-  } else {
-    const avgs = averages(subset, minGames);
-    const list = [...avgs].sort((a, b) => b.avg.gs - a.avg.gs).slice(0, 10);
-    const rows = list.map((p, i) =>
-      `<tr><td>${i + 1}. ${pdot(p.pc, p.pa)}<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.teamShort))}</a></td><td><b>${esc(f1(p.avg.gs))}</b></td><td>${p.games}</td></tr>`).join("");
-    body = `<section class="card"><h2>Top 10 MVP</h2><p class="meta">Game Score moyen · ${minText}</p>${list.length
-      ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>GmSc</th><th>Matchs</th></tr>${rows}</table>`
-      : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
-  }
-
-  return `${nav}<section class="card" style="margin-bottom:0"><p class="meta">${esc(GAMES?.season || "")} · ${phaseLabel()}</p>${select}${views}</section>${body}`;
 }
 
 // ---------- Favoris ----------
@@ -1542,9 +1439,7 @@ function mviewNav() {
 }
 
 function renderNav() {
-  document.getElementById("leagues").innerHTML = `<select class="seasonSel" id="seasonSel" aria-label="Saison">${SEASONS.map(x =>
-    `<option value="${x}"${x === state.season ? " selected" : ""}>${x}${x === CURRENT_SEASON ? " (en cours)" : ""}</option>`).join("")}</select>`
-    + [["regular", "Saison régulière"], ["playoffs", "Playoffs"]].map(([k, l]) =>
+  document.getElementById("leagues").innerHTML = [["regular", "Saison régulière"], ["playoffs", "Playoffs"]].map(([k, l]) =>
       `<button data-phase="${k}" class="${state.phase === k ? "on" : ""}">${l}</button>`).join("");
   document.getElementById("tabs").innerHTML = TABS.map(t =>
     `<button data-tab="${t.key}" class="${!state.detail && t.key === state.tab ? "on" : ""}">${esc(t.label)}</button>`).join("");
@@ -1689,119 +1584,75 @@ async function teamHTML(name) {
   </section>`;
 }
 
-// ---------- All-Star : 16 Américains et 8 internationaux, selon le Game Score moyen ----------
-const ALLSTAR_MIN_GAMES = 3;   // matchs minimum pour être retenu
-const ALLSTAR_US = 16, ALLSTAR_INTL = 8;
-// Nationalités des internationaux, établies de mémoire (à vérifier). Les joueurs absents sont comptés comme américains.
-const NAT_BY_COUNTRY = {
-  CAN: ["Shai Gilgeous-Alexander", "Jamal Murray", "Andrew Wiggins", "RJ Barrett", "Luguentz Dort", "Nickeil Alexander-Walker", "Dillon Brooks", "Kelly Olynyk", "Andrew Nembhard", "Dwight Powell", "Brandon Clarke", "Trey Lyles", "Oshae Brissett"],
-  SRB: ["Nikola Jokić", "Bogdan Bogdanović", "Nikola Milutinov"],
-  MNE: ["Nikola Vučević"],
-  FRA: ["Victor Wembanyama", "Rudy Gobert", "Evan Fournier", "Frank Ntilikina", "Nicolas Batum", "Bilal Coulibaly", "Guerschon Yabusele", "Zaccharie Risacher", "Killian Hayes", "Moussa Diabaté", "Théo Maledon", "Alexandre Sarr", "Rayan Rupert"],
-  GRE: ["Giannis Antetokounmpo", "Thanasis Antetokounmpo", "Kostas Antetokounmpo", "Kostas Papanikolaou", "Georgios Papagiannis"],
-  SVN: ["Luka Dončić", "Goran Dragić", "Klemen Prepelič"],
-  GER: ["Dennis Schröder", "Franz Wagner", "Moritz Wagner", "Daniel Theis", "Isaac Bonga", "Maxi Kleber", "Johannes Voigtmann"],
-  AUS: ["Josh Giddey", "Patty Mills", "Joe Ingles", "Ben Simmons", "Dante Exum", "Jock Landale"],
-  ESP: ["Ricky Rubio", "Willy Hernangómez", "Juancho Hernangómez", "Santi Aldama", "Sergio Llull", "Alex Abrines"],
-  ITA: ["Danilo Gallinari", "Nicolò Melli", "Simone Fontecchio"],
-  CMR: ["Pascal Siakam", "Joel Embiid", "Luc Mbah a Moute"],
-  NGA: ["Precious Achiuwa"],
-  BIH: ["Jusuf Nurkić"],
-  TUR: ["Furkan Korkmaz", "Ersan İlyasova", "Cedi Osman", "Alperen Şengün", "Omer Yurtseven"],
-  LTU: ["Jonas Valančiūnas", "Domantas Sabonis"],
-  LVA: ["Kristaps Porziņģis"],
-  CRO: ["Dario Šarić", "Mario Hezonja", "Ivica Zubac"],
-  CZE: ["Tomáš Satoranský"],
-  ARG: ["Facundo Campazzo", "Luis Scola", "Nicolás Laprovittola"],
-  JPN: ["Yuta Watanabe", "Rui Hachimura"],
-  UKR: ["Svi Mykhailiuk"],
-  ISR: ["Deni Avdija"],
-  FIN: ["Lauri Markkanen"],
-  NZL: ["Steven Adams"],
-  GEO: ["Goga Bitadze"],
-  SRB2: []
-};
-const normName = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-const NAT_OF = new Map(Object.entries(NAT_BY_COUNTRY).flatMap(([c, names]) => names.map(n => [normName(n), c])));
-
-async function allStarHTML() {
-  const season = state.season;
-  let raw;
-  try { raw = await loadSeason(season); } catch (e) { raw = { rows: [] }; }
-  const day = raw.allstar;   // date du All-Star Game de la saison, lue dans les données de la saison
-  if (!day) {
-    const msg = season === CURRENT_SEASON
-      ? "Le All-Star Game de cette saison n'a pas encore eu lieu."
-      : "Pas de All-Star Game pour cette saison (il n'a pas eu lieu : première édition en 1951, pas de match en 1999).";
-    return `<section class="card"><p class="empty">${esc(msg)}</p></section>`;
-  }
-  const before = raw.rows.filter(r => r.phase === "regular" && r.day < day);
-  if (!before.length) return `<section class="card"><p class="empty">${esc(noDataText())}</p></section>`;
-  const dayFr = new Date(day + "T12:00:00Z").toLocaleDateString("fr-FR", {timeZone: "UTC", day: "numeric", month: "long", year: "numeric"});
-  const eligible = averages(before, ALLSTAR_MIN_GAMES).sort((a, b) => b.avg.gs - a.avg.gs);
-  const countryOf = p => NAT_OF.get(normName(p.name)) || "USA";
-  const us = eligible.filter(p => countryOf(p) === "USA").slice(0, ALLSTAR_US);
-  const intl = eligible.filter(p => countryOf(p) !== "USA").slice(0, ALLSTAR_INTL);
-
-  const table = (list, withCountry) => list.length
-    ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>GmSc</th></tr>${list.map(p =>
-        `<tr><td>${pdot(p.pc, p.pa)}<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.teamShort))}</a>${withCountry ? ` <span class="meta">${esc(countryOf(p))}</span>` : ""}</td><td><b>${esc(f1(p.avg.gs))}</b></td></tr>`).join("")}</table>`
-    : '<p class="empty">Aucun joueur qualifié.</p>';
-
-  return `<section class="card"><h2>Américains (${us.length}/${ALLSTAR_US})</h2>${table(us, false)}</section>
-    <section class="card"><h2>Internationaux (${intl.length}/${ALLSTAR_INTL})</h2>${table(intl, true)}</section>
-    <p class="meta">All-Star · saison ${esc(season)} jusqu'au ${esc(dayFr)} · Game Score moyen (${ALLSTAR_MIN_GAMES} matchs minimum). Nationalités établies de mémoire : les joueurs absents de la liste sont comptés comme américains. Le vrai All-Star dépend des votes.</p>`;
-}
-
-// ---------- Stats élargies : All Time, Comparateur, All-Star ----------
+// ---------- Stats : All Time (carrière et grosses perfs), Comparateur ----------
 function statsViewsHTML() {
-  return `<div class="sview">${[["leaders", "Leaders"], ["perfs", "Grosses perfs"], ["mvp", "MVP"], ["alltime", "All Time"], ["compare", "Comparateur"], ["allstar", "All-Star"]]
+  return `<div class="sview">${[["alltime", "All Time"], ["perfs", "Grosses perfs"], ["compare", "Comparateur"]]
     .map(([k, l]) => `<button data-sview="${k}" class="${k === state.statsView ? "on" : ""}">${l}</button>`).join("")}</div>`;
 }
-async function statsWide() {
+async function statsHTML() {
+  if (state.league !== "NBA") return '<section class="card"><p class="empty">Statistiques bientôt disponibles pour ce championnat.</p></section>';
   const head = `<section class="card" style="margin-bottom:0">${statsViewsHTML()}</section>`;
-  if (state.statsView === "alltime") return head + await allTimeHTML();
   if (state.statsView === "compare") return head + await compareHTML();
-  return head + await allStarHTML();
+  if (state.statsView === "perfs") return head + await perfsHTML();
+  return head + await allTimeHTML();
 }
 
-// All Time : moyennes par joueur et par saison, ou grosses perfs (un seul match), toutes saisons
+// All Time carrière : une ligne par joueur, moyennes pondérées par les matchs de toutes ses saisons
+const CAREER_MIN = { regular: 100, playoffs: 10 };   // matchs minimum sur la carrière
+const CAREER_STATS = ["pts", "reb", "ast", "stl", "blk", "tpm", "gs"];
+async function careerRows(phase) {
+  const at = await loadAllTime();
+  const map = new Map();
+  for (const e of at.entries) {
+    if (e.p !== phase) continue;
+    let c = map.get(e.n);
+    if (!c) {
+      c = { name: e.n, g: 0, seasons: 0, sum: Object.fromEntries(CAREER_STATS.map(k => [k, 0])), team: e.t, last: "" };
+      map.set(e.n, c);
+    }
+    c.g += e.g; c.seasons++;
+    for (const k of CAREER_STATS) c.sum[k] += e.v[k] * e.g;
+    if (e.s > c.last) { c.last = e.s; c.team = e.t; }
+  }
+  return [...map.values()]
+    .filter(c => c.g >= CAREER_MIN[phase])
+    .map(c => ({ ...c, avg: Object.fromEntries(CAREER_STATS.map(k => [k, c.sum[k] / c.g])) }));
+}
 async function allTimeHTML() {
-  let at;
-  try { at = await loadAllTime(); } catch (e) {
+  let rows;
+  try { rows = await careerRows(state.phase); } catch (e) {
     return '<section class="card"><p class="empty">Classement All Time indisponible pour le moment.</p></section>';
   }
-  const phase = state.phase;
-  const range = `${SEASONS[SEASONS.length - 1]} à ${SEASONS[0]}`;
   const cats = [...CATS, { key: "gs", label: "Game Score" }];
-  const nav = `<div class="sview">${[["moy", "Moyennes par saison"], ["perfs", "Grosses perfs"]]
-    .map(([k, l]) => `<button data-atv="${k}" class="${k === state.atView ? "on" : ""}">${l}</button>`).join("")}</div>`;
-
-  if (state.atView === "perfs") {
-    const per = at.perfs?.[phase];
-    if (!per) return nav + '<section class="card"><p class="empty">Grosses perfs pas encore calculées.</p></section>';
-    const body = cats.map(c => {
-      const list = (per[c.key] || []).slice(0, 10);
-      const rows = list.map((r, i) =>
-        `<tr><td>${i + 1}. <a class="lnk" data-player="${esc(r.n)}">${esc(r.n)}</a></td><td>${esc(r.s)}</td><td><a class="lnk" data-team="${esc(r.t)}">${esc(ab(r.t))}</a> – ${esc(ab(r.o))}<div class="meta">${esc(r.ts)}-${esc(r.os)} · ${esc(shortDay(r.d))}</div></td><td><b>${esc(f1(r.v))}</b></td></tr>`).join("");
-      return `<section class="card"><h2>${esc(c.label)}</h2>${list.length
-        ? `<table class="tbl"><tr><th>Joueur</th><th>Saison</th><th>Match</th><th>Valeur</th></tr>${rows}</table>`
-        : '<p class="empty">Aucune performance.</p>'}</section>`;
-    }).join("");
-    return nav + `<p class="meta">Meilleure performance d'un seul match, ${phaseLabel().toLowerCase()}, toutes saisons ${range}</p>` + body;
-  }
-
-  const minG = phase === "playoffs" ? 3 : 20;
-  const entries = at.entries.filter(e => e.p === phase && e.g >= minG);
   const body = cats.map(c => {
-    const list = [...entries].sort((x, y) => y.v[c.key] - x.v[c.key]).slice(0, 10);
-    const rows = list.map((e, i) =>
-      `<tr><td>${i + 1}. <a class="lnk" data-player="${esc(e.n)}">${esc(e.n)}</a></td><td>${esc(e.s)}</td><td><a class="lnk" data-team="${esc(e.t)}">${esc(ab(e.t))}</a></td><td><b>${esc(f1(e.v[c.key]))}</b></td><td>${esc(e.g)}</td></tr>`).join("");
+    const list = [...rows].sort((x, y) => y.avg[c.key] - x.avg[c.key]).slice(0, 10);
+    const trs = list.map((p, i) =>
+      `<tr><td>${i + 1}. <a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td>${esc(p.seasons)}</td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.team))}</a></td><td><b>${esc(f1(p.avg[c.key]))}</b></td><td>${esc(p.g)}</td></tr>`).join("");
     return `<section class="card"><h2>${esc(c.label)}</h2>${list.length
-      ? `<table class="tbl"><tr><th>Joueur</th><th>Saison</th><th>Équipe</th><th>Moy.</th><th>Matchs</th></tr>${rows}</table>`
+      ? `<table class="tbl"><tr><th>Joueur</th><th>Saisons</th><th>Équipe</th><th>Moy.</th><th>Matchs</th></tr>${trs}</table>`
       : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
   }).join("");
-  return nav + `<p class="meta">Moyennes par saison, ${phaseLabel().toLowerCase()} · ${minG} matchs minimum · toutes saisons ${range}</p>` + body;
+  return `<p class="meta">Carrière, ${phaseLabel().toLowerCase()} · ${CAREER_MIN[state.phase]} matchs minimum · de 1993-94 à aujourd'hui</p>` + body;
+}
+
+// Grosses perfs : meilleurs matchs individuels de toutes les saisons (1993-94 à aujourd'hui)
+async function perfsHTML() {
+  let at;
+  try { at = await loadAllTime(); } catch (e) {
+    return '<section class="card"><p class="empty">Grosses perfs indisponibles pour le moment.</p></section>';
+  }
+  const per = at.perfs?.[state.phase];
+  if (!per) return '<section class="card"><p class="empty">Grosses perfs pas encore calculées.</p></section>';
+  const cats = [...CATS, { key: "gs", label: "Game Score" }];
+  const body = cats.map(c => {
+    const list = (per[c.key] || []).slice(0, 10);
+    const trs = list.map((r, i) =>
+      `<tr><td>${i + 1}. <a class="lnk" data-player="${esc(r.n)}">${esc(r.n)}</a></td><td>${esc(r.s)}</td><td><a class="lnk" data-team="${esc(r.t)}">${esc(ab(r.t))}</a> – ${esc(ab(r.o))}<div class="meta">${esc(r.ts)}-${esc(r.os)} · ${esc(shortDay(r.d))}</div></td><td><b>${esc(f1(r.v))}</b></td></tr>`).join("");
+    return `<section class="card"><h2>${esc(c.label)}</h2>${list.length
+      ? `<table class="tbl"><tr><th>Joueur</th><th>Saison</th><th>Match</th><th>Valeur</th></tr>${trs}</table>`
+      : '<p class="empty">Aucune performance.</p>'}</section>`;
+  }).join("");
+  return `<p class="meta">Meilleure performance d'un seul match, ${phaseLabel().toLowerCase()}, de 1993-94 à aujourd'hui</p>` + body;
 }
 
 // Comparateur : deux joueurs, chacun avec sa saison et sa phase
@@ -1838,39 +1689,6 @@ async function compareHTML() {
     <table class="tbl"><tr><th></th><th>${head(A)}</th><th>${head(B)}</th></tr>${rows}</table>
     ${(!A.av || !B.av) ? '<p class="meta">Choisissez un joueur pour chaque côté. Les saisons peuvent être différentes.</p>' : ""}
   </section>`;
-}
-
-// Saison terminée : champion et série des finales (la série entre les deux équipes du dernier match des playoffs)
-async function finalsHTML(season) {
-  let raw;
-  try { raw = await loadSeason(season); } catch (e) { return ""; }
-  const po = raw.rows.filter(r => r.phase === "playoffs");
-  if (!po.length) return "";
-  const games = new Map();
-  for (const r of po) {
-    const k = `${r.day}|${[r.team, r.opp].sort().join("|")}`;
-    if (!games.has(k)) games.set(k, { day: r.day, home: r.team, away: r.opp, hs: r.ts, as: r.os });
-  }
-  const list = [...games.values()].sort((x, y) => x.day.localeCompare(y.day));
-  const last = list[list.length - 1];
-  const pair = [last.home, last.away];
-  const series = list.filter(g => pair.includes(g.home) && pair.includes(g.away));
-  const w = new Map(pair.map(t => [t, 0]));
-  for (const g of series) {
-    const win = g.hs > g.as ? g.home : g.away;
-    w.set(win, w.get(win) + 1);
-  }
-  const [t1, t2] = [...pair].sort((x, y) => w.get(y) - w.get(x));
-  if (w.get(t1) < 4) return "";   // finales non terminées
-  const lines = series.map(g => `<li>${esc(shortDay(g.day))} · ${esc(ab(g.home))} ${esc(g.hs)}-${esc(g.as)} ${esc(ab(g.away))}</li>`).join("");
-  const logo = (n, cls) => TEAM_LOGOS[n] ? `<img class="${cls}" src="${esc(TEAM_LOGOS[n])}" alt="">` : "";
-  return `<section class="card finals"><h2>Finales ${esc(season)}</h2>
-    <div class="fin-hero">
-      <div class="fin-win">${logo(t1, "fin-logo-win")}<b>${esc(t1)}</b><span class="meta">Champion</span></div>
-      <div class="fin-score">${w.get(t1)}<span>-</span>${w.get(t2)}</div>
-      <div class="fin-lose">${logo(t2, "fin-logo-lose")}<span>${esc(t2)}</span></div>
-    </div>
-    <ul class="plist">${lines}</ul></section>`;
 }
 
 function scheduleRefresh() {
@@ -1918,8 +1736,6 @@ async function render(opts = {}) {
         html = await homeHTML();
       } else if (state.tab === "cal" && isFoot(L)) {
         html = await footCalHTML(L, today);
-      } else if (state.tab === "cal" && state.season !== CURRENT_SEASON) {
-        html = await pastResultsHTML();
       } else if (state.tab === "cal" && state.matchView !== "results") {
         const evs = await loadEvents(L, today, addDays(today, 7));
         let teams = [];
@@ -1989,8 +1805,6 @@ appEl.addEventListener("click", e => {
   if (mv) { state.matchView = mv.dataset.mview; state.raceId = null; render({silent: true}); return; }
   const hb = e.target.closest("button[data-home]");
   if (hb) { state.homePeriod = hb.dataset.home; render({silent: true}); return; }
-  const atb = e.target.closest("button[data-atv]");
-  if (atb) { state.atView = atb.dataset.atv; render({silent: true}); return; }
   const sp = e.target.closest("button[data-stat]");
   if (sp) { state.statsPeriod = sp.dataset.stat; state.statsKey = ""; render({silent: true}); return; }
   const sv = e.target.closest("button[data-sview]");
@@ -2059,9 +1873,6 @@ appEl.addEventListener("toggle", e => {
 document.getElementById("leagues").addEventListener("click", e => {
   const ph = e.target.closest("[data-phase]");
   if (ph) { state.phase = ph.dataset.phase; GAMES = null; state.statsKey = ""; state.profile = null; render(); }
-});
-document.getElementById("leagues").addEventListener("change", e => {
-  if (e.target.id === "seasonSel") { state.season = e.target.value; GAMES = null; state.statsKey = ""; state.profile = null; render(); }
 });
 document.getElementById("tabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-tab]");
