@@ -1,0 +1,17 @@
+name: Sonde ESPN (temporaire)
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tester les saisons
+        run: |
+          B=https://site.api.espn.com/apis/site/v2/sports/basketball/nba
+          for y in $(seq 1950 2016); do
+            sb=$(curl -s -m 30 -o /tmp/sb.json -w "%{http_code}" "$B/scoreboard?dates=${y}1115")
+            n=$(node -e 'try{const j=require("/tmp/sb.json");console.log((j.events||[]).length)}catch(e){console.log("err")}')
+            st=$(curl -s -m 30 -o /tmp/st.json -w "%{http_code}" "https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season=$((y+1))")
+            ns=$(node -e 'try{const j=require("/tmp/st.json");console.log(JSON.stringify(j).match(/"displayName":"[^"]*Conference[^"]*"/g)?.length ?? 0)}catch(e){console.log("err")}')
+            echo "saison $y-$((y+1)) : scoreboard HTTP $sb ($n matchs le 15 nov.) | classement HTTP $st (groupes: $ns)"
+          done
