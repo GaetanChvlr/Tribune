@@ -176,7 +176,7 @@ h2.ph{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.69</div>
+<div class="ver">v1.70</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1462,6 +1462,7 @@ async function rosterOf(teamName) {
     const r = await getJSON(`${SCORES}basketball/nba/teams/${id}/roster`);
     const list = (r.athletes || []).flatMap(a => a.items || [a]).map(a => ({
       name: a.fullName || a.displayName || "",
+      id: a.id || "",
       pos: a.position?.abbreviation || a.position?.displayName || "",
       num: a.jersey || "",
       country: a.birthPlace?.country || ""
@@ -1561,16 +1562,29 @@ async function teamHTML(name) {
 }
 
 // ---------- All-Star : 16 Américains et 8 internationaux, selon le Game Score moyen ----------
+const athleteCountry = new Map(); // pays des joueurs (fiche ESPN), en mémoire
 const ALLSTAR_MIN_GAMES = 3;   // matchs minimum pour être retenu
 const ALLSTAR_US = 16, ALLSTAR_INTL = 8;
 async function allStarHTML() {
   const data = await loadGames();
   const teams = await loadTeams("NBA");
   const res = await Promise.allSettled(teams.map(t => rosterOf(t)));
-  const countryOf = new Map();
+  const countryOf = new Map(), idOf = new Map();
   for (const r of res) {
-    if (r.status === "fulfilled") for (const p of r.value) countryOf.set(p.name, p.country);
+    if (r.status === "fulfilled") for (const p of r.value) { countryOf.set(p.name, p.country); idOf.set(p.name, p.id); }
   }
+  // Pays absent de l'effectif : fiche de chaque joueur (les mieux classés seulement)
+  const ranked = averages(data.rows, ALLSTAR_MIN_GAMES).sort((a, b) => b.avg.gs - a.avg.gs);
+  const missing = ranked.filter(p => !countryOf.get(p.name) && idOf.get(p.name)).slice(0, 120);
+  await Promise.allSettled(missing.map(async p => {
+    if (!athleteCountry.has(p.name)) {
+      try {
+        const j = await getJSON(`https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${idOf.get(p.name)}`);
+        athleteCountry.set(p.name, j.athlete?.birthPlace?.country || "");
+      } catch (e) { athleteCountry.set(p.name, ""); }
+    }
+    if (!countryOf.get(p.name)) countryOf.set(p.name, athleteCountry.get(p.name));
+  }));
   const isUS = c => /^(usa|us|united states|états-unis|etats-unis)$/i.test(String(c || "").trim());
   const eligible = averages(data.rows, ALLSTAR_MIN_GAMES).sort((a, b) => b.avg.gs - a.avg.gs);
   const us = eligible.filter(p => isUS(countryOf.get(p.name))).slice(0, ALLSTAR_US);
