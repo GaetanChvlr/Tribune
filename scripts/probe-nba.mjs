@@ -10,7 +10,7 @@ const H = {
 const out = [];
 async function test(label, url) {
   try {
-    const r = await fetch(url, { headers: H });
+    const r = await fetch(url, { headers: H, signal: AbortSignal.timeout(20000) });
     const t = await r.text();
     let info = "";
     try {
