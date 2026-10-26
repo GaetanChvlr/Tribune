@@ -169,7 +169,7 @@ table.ftbl th:nth-child(n+3),table.ftbl td:nth-child(n+3){text-align:center}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.62</div>
+<div class="ver">v1.63</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -610,7 +610,7 @@ async function loadTeams(league) {
 async function loadGames() {
   if (GAMES) return GAMES;
   try {
-    const r = await fetch("data/games.json", {cache: "no-store"});
+    const r = await fetch(`data/games.json?t=${Date.now()}`, {cache: "no-store"});
     if (!r.ok) throw new Error("HTTP " + r.status);
     const j = await r.json();
     const cols = j.columns || [];
@@ -1513,6 +1513,10 @@ appEl.addEventListener("change", e => {
     state.statsKey = e.target.value;
     render({silent: true});
   }
+});
+// Au retour dans l'appli (ex. depuis l'écran d'accueil), les données joueurs sont relues
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { GAMES = null; render({silent: true}); }
 });
 // Mémorise les conférences dépliées pour les garder après un rafraîchissement
 appEl.addEventListener("toggle", e => {
