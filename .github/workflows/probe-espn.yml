@@ -11,21 +11,26 @@ jobs:
       - name: Tester les saisons
         run: |
           B=https://site.api.espn.com/apis/site/v2/sports/basketball/nba
-          S=https://site.api.espn.com/apis/v2/sports/basketball/nba
           OUT=data/probe-espn.txt
           : > $OUT
-          for y in 1950 1960 1970 1980 1985 1990 1995 2000 2003 2005 2008 2010 2012 2013 2014 2015 2016; do
-            sb=$(curl -s -m 30 -o /tmp/sb.json -w "%{http_code}" "$B/scoreboard?dates=${y}1115")
-            n=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("/tmp/sb.json","utf8"));console.log((j.events||[]).length)}catch(e){console.log("err")}')
-            eid=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("/tmp/sb.json","utf8"));console.log(j.events[0].id)}catch(e){console.log("")}')
-            sm="-"
-            if [ -n "$eid" ]; then
+          for y in $(seq 1946 3 1995) 1996 1998 2000 2002; do
+            total=0; first=""; dates=""
+            for md in 1101 1115 1201 1215 0101 0115 0201 0215 0301 0315 0401 0415 0501 0515 0601; do
+              d=$([ $md -ge 1000 ] && echo $y || echo $((y+1)))
+              key="${d}${md:0:4}"
+              key="${d}${md}"
+              n=$(curl -s -m 30 -o /tmp/sb.json -w "%{http_code}" "$B/scoreboard?dates=$key")
+              c=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("/tmp/sb.json","utf8"));console.log((j.events||[]).length)}catch(e){console.log(0)}')
+              total=$((total+c))
+              if [ -z "$first" ] && [ "$c" -gt 0 ]; then first=$(node -e 'const j=JSON.parse(require("fs").readFileSync("/tmp/sb.json","utf8"));console.log(j.events[0].id+" "+j.events[0].season?.type)'); fi
+            done
+            info="-"
+            if [ -n "$first" ]; then
+              eid=${first%% *}
               sm=$(curl -s -m 30 -o /tmp/sm.json -w "%{http_code}" "$B/summary?event=$eid")
-              sm="$sm/$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("/tmp/sm.json","utf8"));console.log((j.boxscore?.players||[]).reduce((a,t)=>a+(t.statistics?.[0]?.athletes||[]).length,0)+" joueurs")}catch(e){console.log("err")}')"
+              info="summary $sm: $(node -e 'try{const j=JSON.parse(require("fs").readFileSync("/tmp/sm.json","utf8"));const t=j.boxscore?.players?.[0]?.statistics?.[0];console.log("colonnes="+(t?.names||[]).join(","))}catch(e){console.log("err")}')"
             fi
-            st=$(curl -s -m 30 -o /tmp/st.json -w "%{http_code}" "$S/standings?season=$((y+1))")
-            cel=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("/tmp/st.json","utf8"));let r="";const walk=(g)=>{for(const e of (g.standings?.entries||[])){if((e.team?.displayName||"").includes("Celtics")){r=(e.stats||[]).filter(s=>["wins","losses"].includes(s.name)).map(s=>s.name+"="+s.displayValue).join(" ")}};for(const c of (g.children||[]))walk(c)};walk(j);console.log(r||"absent")}catch(e){console.log("err")}')
-            echo "saison $y-$((y+1)) : scoreboard $sb ($n matchs le 15 nov., summary $sm) | classement season=$((y+1)) HTTP $st, Celtics: $cel" >> $OUT
+            echo "saison $y-$((y+1)) : matchs trouvés sur 15 dates = $total ; $info" >> $OUT
           done
           cat $OUT
       - name: Enregistrer le résultat
