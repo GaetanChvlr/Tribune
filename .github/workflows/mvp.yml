@@ -2,7 +2,9 @@ name: Calcul des données Tribune
 
 on:
   schedule:
-    - cron: "30 9 * * *"   # chaque jour à 9h30 UTC
+    # GitHub ne prend que l'heure UTC : deux créneaux, et seul celui qui tombe sur 7h à Paris exécute le job
+    - cron: "0 5 * * *"   # 7h à Paris en heure d'été (UTC+2)
+    - cron: "0 6 * * *"   # 7h à Paris en heure d'hiver (UTC+1)
   workflow_dispatch:        # lancement manuel possible depuis l'onglet Actions
 
 permissions:
@@ -12,16 +14,29 @@ jobs:
   games:
     runs-on: ubuntu-latest
     steps:
+      - name: Vérifier l'heure de Paris
+        id: tz
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ] || [ "$(TZ=Europe/Paris date +%H)" = "07" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.tz.outputs.run == 'true'
 
       - uses: actions/setup-node@v4
+        if: steps.tz.outputs.run == 'true'
         with:
           node-version: 20
 
       - name: Récupérer les matchs de la saison
+        if: steps.tz.outputs.run == 'true'
         run: node scripts/build-games.mjs
 
       - name: Enregistrer data/games.json
+        if: steps.tz.outputs.run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -29,6 +44,7 @@ jobs:
           git diff --cached --quiet || (git commit -m "Mise à jour des données de matchs" && git pull --rebase -q origin main && git push)
 
       - name: Notifier la mise à jour du tableau MVP
+        if: steps.tz.outputs.run == 'true'
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: node scripts/notify.mjs mvp
