@@ -46,7 +46,9 @@ async function getJSON(url) {
 function seasonBounds(now) {
   const y = ARG ? Number(ARG) : (now.getUTCMonth() >= 9 ? now.getUTCFullYear() : now.getUTCFullYear() - 1);
   const label = `${y}-${String((y + 1) % 100).padStart(2, "0")}`;
-  return { start: `${y}-10-01`, end: `${y + 1}-06-30`, label, out: ARG ? `data/games-${label}.json` : "data/games.json" };
+  // Fin de saison : finales jusqu'à fin juillet ; 2019-20 (bulle de Floride, playoffs jusqu'en octobre 2020)
+  const end = y === 2019 ? `${y + 1}-10-31` : `${y + 1}-07-31`;
+  return { start: `${y}-10-01`, end, label, out: ARG ? `data/games-${label}.json` : "data/games.json" };
 }
 
 // "5-12" -> [5, 12]

@@ -181,7 +181,7 @@ table.tbl td.win{font-weight:700}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.73</div>
+<div class="ver">v1.74</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1050,7 +1050,8 @@ async function homeHTML() {
   catch (e) { matches = `<section class="card"><p class="empty">Matchs indisponibles : ${esc(e.message)}</p></section>`; }
   if (L !== "NBA") return matches;
   const data = await loadGames();
-  return `<div class="cols"><div class="col">${matches}</div><div class="col">${homeMvpHTML(data)}${homePlayersHTML(data)}</div></div>`;
+  const fin = state.season !== CURRENT_SEASON ? await finalsHTML(state.season) : "";
+  return fin + `<div class="cols"><div class="col">${matches}</div><div class="col">${homeMvpHTML(data)}${homePlayersHTML(data)}</div></div>`;
 }
 
 // ---------- Visuel Instagram (1080 × 1350), un top par visuel ----------
@@ -1728,6 +1729,32 @@ async function compareHTML() {
     <table class="tbl"><tr><th></th><th>${head(A)}</th><th>${head(B)}</th></tr>${rows}</table>
     ${(!A.av || !B.av) ? '<p class="meta">Choisissez un joueur pour chaque côté. Les saisons peuvent être différentes.</p>' : ""}
   </section>`;
+}
+
+// Saison terminée : champion et série des finales (la série entre les deux équipes du dernier match des playoffs)
+async function finalsHTML(season) {
+  let raw;
+  try { raw = await loadSeason(season); } catch (e) { return ""; }
+  const po = raw.rows.filter(r => r.phase === "playoffs");
+  if (!po.length) return "";
+  const games = new Map();
+  for (const r of po) {
+    const k = `${r.day}|${[r.team, r.opp].sort().join("|")}`;
+    if (!games.has(k)) games.set(k, { day: r.day, home: r.team, away: r.opp, hs: r.ts, as: r.os });
+  }
+  const list = [...games.values()].sort((x, y) => x.day.localeCompare(y.day));
+  const last = list[list.length - 1];
+  const pair = [last.home, last.away];
+  const series = list.filter(g => pair.includes(g.home) && pair.includes(g.away));
+  const w = new Map(pair.map(t => [t, 0]));
+  for (const g of series) {
+    const win = g.hs > g.as ? g.home : g.away;
+    w.set(win, w.get(win) + 1);
+  }
+  const [t1, t2] = [...pair].sort((x, y) => w.get(y) - w.get(x));
+  if (w.get(t1) < 4) return "";   // finales non terminées
+  const lines = series.map(g => `<li>${esc(shortDay(g.day))} · ${esc(ab(g.home))} ${esc(g.hs)}-${esc(g.as)} ${esc(ab(g.away))}</li>`).join("");
+  return `<section class="card"><h2>Finales ${esc(season)}</h2><p class="meta">Champion : <b>${esc(t1)}</b> · ${w.get(t1)}-${w.get(t2)} contre ${esc(t2)}</p><ul class="plist">${lines}</ul></section>`;
 }
 
 function scheduleRefresh() {
