@@ -164,6 +164,13 @@ h2.ph{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .pst b{display:block;font-size:17px;font-variant-numeric:tabular-nums}
 .pst span{font-size:11px;color:var(--muted)}
 .plist{margin:6px 0 0;padding-left:18px;font-size:14px;line-height:1.7}
+.finals .fin-hero{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0 14px}
+.finals .fin-win,.finals .fin-lose{display:flex;flex-direction:column;align-items:center;text-align:center;flex:1;min-width:0;gap:4px}
+.finals .fin-logo-win{width:110px;height:110px;object-fit:contain}
+.finals .fin-logo-lose{width:54px;height:54px;object-fit:contain;opacity:.75}
+.finals .fin-lose span{font-size:13px;color:var(--muted)}
+.finals .fin-score{font-size:30px;font-weight:800;white-space:nowrap}
+.finals .fin-score span{margin:0 6px;color:var(--muted)}
 #leagues{flex-wrap:wrap;gap:8px;overflow:visible!important;align-items:center}
 #leagues .seasonSel{padding:9px 14px;border-radius:999px;border:1px solid var(--muted);background:var(--card);color:var(--text);font:inherit;font-weight:600}
 table.tbl td.win{font-weight:700}
@@ -181,7 +188,7 @@ table.tbl td.win{font-weight:700}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.75</div>
+<div class="ver">v1.76</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -398,10 +405,17 @@ async function loadEvents(league, from, to) {
 
 // Classement : conférences, équipes triées par rang. Mis en cache 3 heures.
 let standingsCache = {};
+// Classement de la saison choisie (ESPN : « season » = année de fin de saison)
+function standingsUrl(league, season) {
+  const base = `${STANDINGS}${LEAGUES[league].path}/standings`;
+  return season === CURRENT_SEASON ? base : `${base}?season=${Number(season.slice(0, 4)) + 1}`;
+}
 async function getStandings(league) {
-  const c = standingsCache[league];
+  const season = state.season;
+  const key = `${league}|${season}`;
+  const c = standingsCache[key];
   if (c && Date.now() - c.t < STANDINGS_TTL) return c.data;
-  const j = await getJSON(`${STANDINGS}${LEAGUES[league].path}/standings`);
+  const j = await getJSON(standingsUrl(league, season));
   const groups = (j.children || []).map(g => {
     const raw = (g.standings?.entries || []).map(en => {
       const st = Object.fromEntries((en.stats || []).map(s => [s.name, s.displayValue]));
@@ -424,7 +438,7 @@ async function getStandings(league) {
     const entries = raw.map((en, i) => ({ ...en, seed: en.ps ?? i + 1 }));
     return { name: g.name || "Classement", entries };
   }).filter(g => g.entries.length);
-  standingsCache[league] = { data: groups, t: Date.now() };
+  standingsCache[key] = { data: groups, t: Date.now() };
   return groups;
 }
 
@@ -593,7 +607,11 @@ async function loadTeams(league) {
   try {
     const j = await getJSON(`${SCORES}${LEAGUES[league].path}/teams`);
     const list0 = j.sports?.[0]?.leagues?.[0]?.teams || [];
-    list0.forEach(t => rememberTeam(t.team));
+    list0.forEach(t => {
+      rememberTeam(t.team);
+      const l = logoOf(t.team);
+      if (t.team?.displayName && l) TEAM_LOGOS[t.team.displayName] = l;
+    });
     names = list0.map(t => t.team?.displayName);
   } catch (e) {}
   if (!names.filter(Boolean).length) {
@@ -609,7 +627,12 @@ async function loadTeams(league) {
 // Saisons : data/games.json (saison en cours) et data/games-AAAA-AA.json (saisons passées)
 const CURRENT_SEASON = "2026-27";
 const SEASONS = ["2026-27", "2025-26", "2024-25", "2023-24", "2022-23", "2021-22", "2020-21", "2019-20", "2018-19", "2017-18", "2016-17"];
-const ALLSTAR_2026_DAY = "2026-02-15";   // All-Star Game 2026 (Intuit Dome) : matchs avant cette date
+// Date du All-Star Game de chaque saison (matchs strictement avant ce jour). Dates établies de mémoire.
+const ALLSTAR_DAY = {
+  "2016-17": "2017-02-19", "2017-18": "2018-02-18", "2018-19": "2019-02-17", "2019-20": "2020-02-16",
+  "2020-21": "2021-03-07", "2021-22": "2022-02-20", "2022-23": "2023-02-19", "2023-24": "2024-02-18",
+  "2024-25": "2025-02-16", "2025-26": "2026-02-15"
+};
 const SEASON_CACHE = new Map();          // saison -> données (une fois chargées)
 let ALLTIME = null;
 function seasonFile(label) {
@@ -656,11 +679,6 @@ async function loadGames() {
   }
   GAMES = g; GAMES_KEY = key;
   return g;
-}
-// Saison régulière 2025-26, pour la page All-Star
-async function loadPrevGames() {
-  const raw = await loadSeason("2025-26");
-  return { rows: raw.rows.filter(r => r.phase === "regular") };
 }
 // Classement All Time : moyennes par joueur, saison et phase (data/alltime.json)
 async function loadAllTime() {
@@ -1052,13 +1070,57 @@ function homePlayersHTML(data) {
 
 async function homeHTML() {
   const L = state.league;
+  // Saison terminée : finales et performances de la saison, rien de la saison en cours
+  if (L === "NBA" && state.season !== CURRENT_SEASON) {
+    try { await loadTeams(L); } catch (e) {}   // logos des équipes
+    const data = await loadGames();
+    const fin = await finalsHTML(state.season);
+    return fin + `<div class="cols"><div class="col">${seasonTopHTML(data)}</div><div class="col">${homePlayersHTML(data)}</div></div>`;
+  }
   let matches = "";
   try { matches = await homeMatchesHTML(L); }
   catch (e) { matches = `<section class="card"><p class="empty">Matchs indisponibles : ${esc(e.message)}</p></section>`; }
   if (L !== "NBA") return matches;
   const data = await loadGames();
-  const fin = state.season !== CURRENT_SEASON ? await finalsHTML(state.season) : "";
-  return fin + `<div class="cols"><div class="col">${matches}</div><div class="col">${homeMvpHTML(data)}${homePlayersHTML(data)}</div></div>`;
+  return `<div class="cols"><div class="col">${matches}</div><div class="col">${homeMvpHTML(data)}${homePlayersHTML(data)}</div></div>`;
+}
+
+// Programme d'une saison terminée : tous ses matchs (joueurs de la saison et de la phase choisies)
+async function pastResultsHTML() {
+  const data = await loadGames();
+  const matches = new Map();
+  for (const r of data.rows) {
+    const k = `${r.day}|${[r.team, r.opp].sort().join("|")}`;
+    if (!matches.has(k)) {
+      matches.set(k, { id: k, name: "", date: new Date(r.day + "T12:00:00"), detail: "Terminé", state: "post", stype: null,
+        cs: [
+          { name: r.team, score: r.ts, logo: TEAM_LOGOS[r.team] || "" },
+          { name: r.opp, score: r.os, logo: TEAM_LOGOS[r.opp] || "" }
+        ] });
+    }
+  }
+  const all = [...matches.values()].sort((a, b) => b.date - a.date);
+  const teams = [...new Set(data.rows.flatMap(r => [r.team, r.opp]))].sort((a, b) => a.localeCompare(b, "fr"));
+  const shown = all.filter(e => !state.teamFilter || e.cs.some(c => c.name === state.teamFilter));
+  const select = `<select class="filter" id="teamFilter"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}"${t === state.teamFilter ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
+  const body = shown.map(e => matchHTML(e)).join("");
+  const empty = data.rows.length ? "Aucun match pour cette sélection." : "Données pas encore disponibles.";
+  return `<section class="card"><h2>Matchs : ${esc(state.season)}</h2><p class="meta">${phaseLabel()}</p>${select}${shown.length ? body : `<p class="empty">${empty}</p>`}</section>`;
+}
+
+// Meilleures performances individuelles de la saison (Game Score), pour l'accueil d'une saison terminée
+function seasonTopHTML(data) {
+  if (!data.rows.length) {
+    return `<section class="card"><h2>Meilleures performances</h2><p class="empty">Données pas encore disponibles.</p></section>`;
+  }
+  const items = [...data.rows].sort((a, b) => b.gs - a.gs).slice(0, 5).map((r, i) => `
+    <div class="pl-row">
+      <div class="pl-name">${i + 1}. ${pdot(r.pc, r.pa)}<a class="lnk" data-player="${esc(r.name)}">${esc(r.name)}</a></div>
+      <div class="pl-line"><a class="lnk" data-team="${esc(r.team)}">${esc(ab(r.teamShort))}</a> ${esc(r.ts)}-${esc(r.os)} ${esc(ab(r.opp))} · ${esc(shortDay(r.day))}</div>
+      <div class="pl-line">GmSc <b>${esc(f1(r.gs))}</b></div>
+      <div class="pl-line">${esc(r.pts)} pts · ${esc(r.reb)} reb · ${esc(r.ast)} ast</div>
+    </div>`).join("");
+  return `<section class="card"><h2>Meilleures performances</h2><p class="meta">${esc(state.season)} · ${phaseLabel()} · classées par Game Score</p>${items}</section>`;
 }
 
 // ---------- Visuel Instagram (1080 × 1350), un top par visuel ----------
@@ -1650,10 +1712,14 @@ const normName = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").t
 const NAT_OF = new Map(Object.entries(NAT_BY_COUNTRY).flatMap(([c, names]) => names.map(n => [normName(n), c])));
 
 async function allStarHTML() {
-  let data;
-  try { data = await loadPrevGames(); } catch (e) { data = { rows: [] }; }
-  const before = data.rows.filter(r => r.day < ALLSTAR_2026_DAY);
-  if (!before.length) return '<section class="card"><p class="empty">Données de la saison 2025-26 pas encore disponibles.</p></section>';
+  const season = state.season;
+  const day = ALLSTAR_DAY[season];
+  if (!day) return `<section class="card"><p class="empty">Le All-Star Game de la saison ${esc(season)} n'a pas encore eu lieu.</p></section>`;
+  let raw;
+  try { raw = await loadSeason(season); } catch (e) { raw = { rows: [] }; }
+  const before = raw.rows.filter(r => r.phase === "regular" && r.day < day);
+  if (!before.length) return `<section class="card"><p class="empty">Données de la saison ${esc(season)} pas encore disponibles.</p></section>`;
+  const dayFr = new Date(day + "T12:00:00Z").toLocaleDateString("fr-FR", {timeZone: "UTC", day: "numeric", month: "long", year: "numeric"});
   const eligible = averages(before, ALLSTAR_MIN_GAMES).sort((a, b) => b.avg.gs - a.avg.gs);
   const countryOf = p => NAT_OF.get(normName(p.name)) || "USA";
   const us = eligible.filter(p => countryOf(p) === "USA").slice(0, ALLSTAR_US);
@@ -1666,7 +1732,7 @@ async function allStarHTML() {
 
   return `<section class="card"><h2>Américains (${us.length}/${ALLSTAR_US})</h2>${table(us, false)}</section>
     <section class="card"><h2>Internationaux (${intl.length}/${ALLSTAR_INTL})</h2>${table(intl, true)}</section>
-    <p class="meta">All-Star 2026 · saison 2025-26 jusqu'au 15 février 2026 · Game Score moyen (${ALLSTAR_MIN_GAMES} matchs minimum). Nationalités établies de mémoire : les joueurs absents de la liste sont comptés comme américains. Le vrai All-Star dépend des votes.</p>`;
+    <p class="meta">All-Star · saison ${esc(season)} jusqu'au ${esc(dayFr)} · Game Score moyen (${ALLSTAR_MIN_GAMES} matchs minimum). Nationalités établies de mémoire : les joueurs absents de la liste sont comptés comme américains. Le vrai All-Star dépend des votes.</p>`;
 }
 
 // ---------- Stats élargies : All Time, Comparateur, All-Star ----------
@@ -1761,7 +1827,14 @@ async function finalsHTML(season) {
   const [t1, t2] = [...pair].sort((x, y) => w.get(y) - w.get(x));
   if (w.get(t1) < 4) return "";   // finales non terminées
   const lines = series.map(g => `<li>${esc(shortDay(g.day))} · ${esc(ab(g.home))} ${esc(g.hs)}-${esc(g.as)} ${esc(ab(g.away))}</li>`).join("");
-  return `<section class="card"><h2>Finales ${esc(season)}</h2><p class="meta">Champion : <b>${esc(t1)}</b> · ${w.get(t1)}-${w.get(t2)} contre ${esc(t2)}</p><ul class="plist">${lines}</ul></section>`;
+  const logo = (n, cls) => TEAM_LOGOS[n] ? `<img class="${cls}" src="${esc(TEAM_LOGOS[n])}" alt="">` : "";
+  return `<section class="card finals"><h2>Finales ${esc(season)}</h2>
+    <div class="fin-hero">
+      <div class="fin-win">${logo(t1, "fin-logo-win")}<b>${esc(t1)}</b><span class="meta">Champion</span></div>
+      <div class="fin-score">${w.get(t1)}<span>-</span>${w.get(t2)}</div>
+      <div class="fin-lose">${logo(t2, "fin-logo-lose")}<span>${esc(t2)}</span></div>
+    </div>
+    <ul class="plist">${lines}</ul></section>`;
 }
 
 function scheduleRefresh() {
@@ -1809,6 +1882,8 @@ async function render(opts = {}) {
         html = await homeHTML();
       } else if (state.tab === "cal" && isFoot(L)) {
         html = await footCalHTML(L, today);
+      } else if (state.tab === "cal" && state.season !== CURRENT_SEASON) {
+        html = await pastResultsHTML();
       } else if (state.tab === "cal" && state.matchView !== "results") {
         const evs = await loadEvents(L, today, addDays(today, 7));
         let teams = [];
