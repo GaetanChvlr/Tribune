@@ -169,7 +169,7 @@ table.ftbl th:nth-child(n+3),table.ftbl td:nth-child(n+3){text-align:center}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.65</div>
+<div class="ver">v1.66</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -178,12 +178,7 @@ const STANDINGS = "https://site.api.espn.com/apis/v2/sports/";
 
 // Version 1 : NBA seule. Pour ajouter un sport, décommentez ou copiez une ligne ci-dessous.
 const LEAGUES = {
-  "NBA": {path: "basketball/nba", startMonth: 9, ph: "ex. Boston Celtics"},
-  "F1":  {path: "racing/f1", startMonth: 2, ph: "ex. Charles Leclerc"},
-  "Ligue 1": {path: "soccer/fra.1", startMonth: 7, ph: "ex. Paris Saint-Germain"},
-  "Ligue 2": {path: "soccer/fra.2", startMonth: 7, ph: "ex. Toulouse FC"},
-  "Ligue 3": {path: "soccer/fra.3", startMonth: 7, ph: "ex. Paris FC"},
-  "National": {path: "soccer/fra.4", startMonth: 7, ph: "ex. Nantes"}
+  "NBA": {path: "basketball/nba", startMonth: 9, ph: "ex. Boston Celtics"}
   // "Ligue 1": {path: "soccer/fra.1", startMonth: 7, ph: "ex. Paris Saint-Germain"},
   // "Top 14":  {path: "rugby/270557", startMonth: 7, ph: "ex. Stade Toulousain"}
 };
@@ -210,22 +205,14 @@ const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 
 const state = {
   league: "NBA", tab: "home", detail: null, teamFilter: "",
-  screen: "landing", homePeriod: "saison", calTeamFilter: "", matchView: "cal", raceId: null,
+  screen: "app", homePeriod: "saison", calTeamFilter: "", matchView: "cal", raceId: null,
   statsView: "leaders", statsPeriod: "nuit", statsKey: "", calWeek: null, resWeek: null
 };
 let favs = loadFavs();           // équipes par championnat
 let players = loadPlayers();     // joueurs favoris
 let token = 0;
 const LANDING = [
-  {key: "NBA", group: "Basket", logo: "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png"},
-  {key: "F1", group: "Automobile", logo: "https://a.espncdn.com/i/teamlogos/leagues/500/f1.png"},
-  {key: "Ligue des Champions", group: "Football", soon: true, logo: "logos/ucl-white.png"},
-  {key: "Europa League", group: "Football", soon: true, logo: "logos/europa-white.png"},
-  {key: "Ligue 1", group: "Football", logo: "logos/ligue1-white.png"},
-  {key: "Ligue 2", group: "Football", logo: "logos/ligue2-white.png"},
-  {key: "Ligue 3", group: "Football", logo: "logos/ligue3.png"},
-  {key: "National", group: "Football", logo: "logos/national-white.png"},
-  {key: "Top 14", group: "Rugby", soon: true, logo: "logos/top14.webp"}
+  {key: "NBA", group: "Basket", logo: "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png"}
 ];
 // Menu d'accueil : uniquement des logos, regroupés par sport
 function landingHTML() {
