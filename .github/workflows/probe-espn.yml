@@ -9,35 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Diagnostic
-        run: |
-          B=https://site.api.espn.com/apis/site/v2/sports/basketball/nba
-          OUT=data/probe-espn.txt
-          : > $OUT
-          for d in 19901101 19921101 19930301 19941101 19701110 19601110 19501201; do
-            curl -s -m 30 -o /tmp/sb.json "$B/scoreboard?dates=$d"
-            node -e '
-              const j=JSON.parse(require("fs").readFileSync("/tmp/sb.json","utf8"));
-              const ev=(j.events||[])[0];
-              console.log("== date '$d' matchs="+(j.events||[]).length);
-              if(!ev){return;}
-              require("child_process").execSync("curl -s -m 30 -o /tmp/sm.json \"'$B'/summary?event="+ev.id+"\"");
-              const s=JSON.parse(require("fs").readFileSync("/tmp/sm.json","utf8"));
-              const teams=s.boxscore?.players||[];
-              const ath=teams.flatMap(t=>(t.statistics?.[0]?.athletes||[]));
-              const withStats=ath.filter(a=>a.stats&&a.stats.length).length;
-              console.log("  event "+ev.id+" athletes="+ath.length+" avecStats="+withStats+" didNotPlay="+ath.filter(a=>a.didNotPlay).length);
-              if(ath[0]) console.log("  exemple: "+JSON.stringify(ath[0]).slice(0,400));
-              console.log("  stats block keys: "+JSON.stringify(Object.keys(teams[0]?.statistics?.[0]||{})));
-            ' >> $OUT 2>&1
-          done
-          for d in 20160201 20160215 20160216 20170219 20030209 19970209 20130217 20260215 20260214 20260216; do
-            curl -s -m 30 -o /tmp/sb.json "$B/scoreboard?dates=$d"
-            node -e '
-              const j=JSON.parse(require("fs").readFileSync("/tmp/sb.json","utf8"));
-              for (const ev of (j.events||[])) console.log("AS '$d': type="+ev.season?.type+" name="+ev.name+" | short="+ev.shortName+" | state="+ev.status?.type?.state);
-            ' >> $OUT 2>&1
-          done
-          cat $OUT
+        run: node scripts/probe.mjs
       - name: Enregistrer
         run: |
           git config user.name "github-actions[bot]"
