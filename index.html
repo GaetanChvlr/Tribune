@@ -157,7 +157,6 @@ table.ftbl th:nth-child(n+3),table.ftbl td:nth-child(n+3){text-align:center}
 .ltile{padding-bottom:66%!important}
 .lpair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .lpair .lgrid{grid-template-columns:1fr}
-.vis{display:block;width:100%;margin-top:12px;padding:10px;border-radius:999px;border:1px solid var(--muted);background:transparent;color:var(--text);font-weight:600;font-size:14px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -170,7 +169,7 @@ table.ftbl th:nth-child(n+3),table.ftbl td:nth-child(n+3){text-align:center}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.64</div>
+<div class="ver">v1.65</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1146,7 +1145,7 @@ async function statsHTML() {
         `<tr><td>${i + 1}. ${pdot(p.pc, p.pa)}${esc(p.name)}</td><td>${esc(ab(p.teamShort))}</td><td><b>${esc(f1(p.avg[c.key]))}</b></td><td>${p.games}</td></tr>`).join("");
       return `<section class="card"><h2>${esc(c.label)}</h2>${list.length
         ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>Moy.</th><th>Matchs</th></tr>${rows}</table>`
-        : '<p class="empty">Aucun joueur qualifié.</p>'}<button class="vis" data-visual="${esc(c.key)}">Créer le visuel Instagram</button></section>`;
+        : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
     }).join("");
     body = `<p class="meta">Top 5 par catégorie · ${minText}</p>` + body;
   } else if (state.statsView === "perfs") {
@@ -1166,7 +1165,7 @@ async function statsHTML() {
       `<tr><td>${i + 1}. ${pdot(p.pc, p.pa)}${esc(p.name)}</td><td>${esc(ab(p.teamShort))}</td><td><b>${esc(f1(p.avg.gs))}</b></td><td>${p.games}</td></tr>`).join("");
     body = `<section class="card"><h2>Top 10 MVP</h2><p class="meta">Game Score moyen · ${minText}</p>${list.length
       ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>GmSc</th><th>Matchs</th></tr>${rows}</table>`
-      : '<p class="empty">Aucun joueur qualifié.</p>'}<button class="vis" data-visual="mvp">Créer le visuel Instagram</button></section>`;
+      : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
   }
 
   return `${nav}<section class="card" style="margin-bottom:0">${select}<div class="sview">${views}</div></section>${body}`;
@@ -1560,8 +1559,6 @@ appEl.addEventListener("click", e => {
   if (mv) { state.matchView = mv.dataset.mview; state.raceId = null; render({silent: true}); return; }
   const hb = e.target.closest("button[data-home]");
   if (hb) { state.homePeriod = hb.dataset.home; render({silent: true}); return; }
-  const vis = e.target.closest("[data-visual]");
-  if (vis) { shareVisual(vis.dataset.visual).catch(err => console.error(err)); return; }
   const sp = e.target.closest("button[data-stat]");
   if (sp) { state.statsPeriod = sp.dataset.stat; state.statsKey = ""; render({silent: true}); return; }
   const sv = e.target.closest("button[data-sview]");
