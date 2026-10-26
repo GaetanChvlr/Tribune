@@ -17,7 +17,7 @@ const ARG = process.argv[2];   // année de début de la saison passée, ex. 202
 const TZ = "America/New_York";
 
 const COLUMNS = ["jour", "joueur", "equipe", "equipe_court", "adversaire", "score_equipe", "score_adversaire",
-  "pts", "reb", "ast", "stl", "blk", "tpm", "gmsc", "couleur", "couleur_alt", "phase"];
+  "pts", "reb", "ast", "stl", "blk", "tpm", "gmsc", "couleur", "couleur_alt", "phase", "match", "logo"];
 
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
 const usDay = date => dayFmt.format(date); // "AAAA-MM-JJ"
@@ -113,7 +113,9 @@ async function rowsOfEvent(id, dayKey, phase) {
         round1(gameScore(names, x.stats)),
         team.team?.color ?? me?.team?.color ?? "",
         team.team?.alternateColor ?? me?.team?.alternateColor ?? "",
-        phase
+        phase,
+        id,
+        team.team?.logo ?? me?.team?.logo ?? ""
       ]);
     }
   }
@@ -129,10 +131,17 @@ async function main() {
   const rows = [];
   const seen = new Set();
   let games = 0, skipped = 0;
+  let allstar = null;   // date du All-Star Game de la saison (absent si la saison n'en a pas eu)
 
   for (let day = start; day <= last; day = addDaysStr(day, 1)) {
     const sb = await getJSON(`${BASE}/scoreboard?dates=${compact(day)}`);
     for (const ev of sb.events ?? []) {
+      // All-Star Game : dernier match du week-end (le Rising Stars et les autres matchs de l'événement sont exclus)
+      const evName = `${ev.name ?? ""} ${ev.shortName ?? ""}`;
+      if (/all-star/i.test(evName) && !/rising|celebrity|skills|shooting|dunk|three/i.test(evName)) {
+        const d = usDay(new Date(ev.date));
+        if (!allstar || d > allstar) allstar = d;
+      }
       const phase = ev.season?.type === 2 ? "regular" : ev.season?.type === 3 ? "playoffs" : null;
       if (!phase) continue;                                // présaison et autres types exclus
       if (ev.status?.type?.state !== "post") continue;     // matchs terminés seulement
@@ -153,6 +162,7 @@ async function main() {
   const out = {
     updated: now.toISOString(),
     seasonLabel: label,
+    allstar,
     matchs: games,
     matchs_ignores: skipped,
     columns: COLUMNS,

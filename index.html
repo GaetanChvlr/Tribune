@@ -188,7 +188,7 @@ table.tbl td.win{font-weight:700}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.76</div>
+<div class="ver">v1.77</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -626,13 +626,11 @@ async function loadTeams(league) {
 
 // Saisons : data/games.json (saison en cours) et data/games-AAAA-AA.json (saisons passées)
 const CURRENT_SEASON = "2026-27";
-const SEASONS = ["2026-27", "2025-26", "2024-25", "2023-24", "2022-23", "2021-22", "2020-21", "2019-20", "2018-19", "2017-18", "2016-17"];
-// Date du All-Star Game de chaque saison (matchs strictement avant ce jour). Dates établies de mémoire.
-const ALLSTAR_DAY = {
-  "2016-17": "2017-02-19", "2017-18": "2018-02-18", "2018-19": "2019-02-17", "2019-20": "2020-02-16",
-  "2020-21": "2021-03-07", "2021-22": "2022-02-20", "2022-23": "2023-02-19", "2023-24": "2024-02-18",
-  "2024-25": "2025-02-16", "2025-26": "2026-02-15"
-};
+// Saisons de 2026-27 à 1949-50 (la plus récente en premier)
+const SEASONS = Array.from({length: 2026 - 1949 + 1}, (_, i) => {
+  const y = 2026 - i;
+  return `${y}-${String((y + 1) % 100).padStart(2, "0")}`;
+});
 const SEASON_CACHE = new Map();          // saison -> données (une fois chargées)
 let ALLTIME = null;
 function seasonFile(label) {
@@ -650,9 +648,11 @@ async function readGamesFile(file) {
     opp: a[idx.adversaire], ts: a[idx.score_equipe], os: a[idx.score_adversaire],
     pts: a[idx.pts], reb: a[idx.reb], ast: a[idx.ast], stl: a[idx.stl], blk: a[idx.blk],
     tpm: a[idx.tpm], gs: a[idx.gmsc], pc: a[idx.couleur] || "", pa: a[idx.couleur_alt] || "",
-    phase: a[idx.phase] || "regular"
+    phase: a[idx.phase] || "regular", event: a[idx.match] || "", logo: a[idx.logo] || ""
   }));
-  return { season: j.seasonLabel || "", updated: j.updated || "", rows };
+  // Logos des équipes (y compris les franchises disparues) : mémorisés pour toutes les pages
+  for (const r of rows) if (r.team && r.logo && !TEAM_LOGOS[r.team]) TEAM_LOGOS[r.team] = r.logo;
+  return { season: j.seasonLabel || "", updated: j.updated || "", allstar: j.allstar || "", rows };
 }
 async function loadSeason(label) {
   // La saison en cours n'est pas gardée en mémoire : elle change chaque nuit
@@ -1092,7 +1092,7 @@ async function pastResultsHTML() {
   for (const r of data.rows) {
     const k = `${r.day}|${[r.team, r.opp].sort().join("|")}`;
     if (!matches.has(k)) {
-      matches.set(k, { id: k, name: "", date: new Date(r.day + "T12:00:00"), detail: "Terminé", state: "post", stype: null,
+      matches.set(k, { id: r.event || k, name: "", date: new Date(r.day + "T12:00:00"), detail: "Terminé", state: "post", stype: null,
         cs: [
           { name: r.team, score: r.ts, logo: TEAM_LOGOS[r.team] || "" },
           { name: r.opp, score: r.os, logo: TEAM_LOGOS[r.opp] || "" }
@@ -1599,7 +1599,9 @@ async function playerHTML(name) {
   const a = averages(rows, 1)[0].avg;
   const games = rows.length;
   let pos = "";
-  try { pos = (await rosterOf(last.team)).find(p => p.name === name)?.pos || ""; } catch (e) {}
+  if (state.season === CURRENT_SEASON) {
+    try { pos = (await rosterOf(last.team)).find(p => p.name === name)?.pos || ""; } catch (e) {}
+  }
   const grid = `<div class="pstats">${statCell("Matchs", esc(games))}${statCell("Pts", esc(f1(a.pts)))}${statCell("Reb", esc(f1(a.reb)))}${statCell("Passes", esc(f1(a.ast)))}${statCell("Interc.", esc(f1(a.stl)))}${statCell("Contres", esc(f1(a.blk)))}${statCell("3 pts", esc(f1(a.tpm)))}${statCell("GmSc", esc(f1(a.gs)))}</div>`;
   const best = [...rows].sort((x, y) => y.gs - x.gs).slice(0, 3)
     .map(r => `<li>${matchText(r)} · ${esc(r.pts)} pts · GmSc ${esc(f1(r.gs))}</li>`).join("");
@@ -1653,7 +1655,13 @@ async function teamHTML(name) {
 
   const statOf = new Map(avgs.map(p => [p.name, p]));
   let roster = [], rosterMsg = "";
-  try { roster = await rosterOf(name); } catch (e) { rosterMsg = "Effectif indisponible pour le moment."; }
+  if (state.season === CURRENT_SEASON) {
+    try { roster = await rosterOf(name); } catch (e) { rosterMsg = "Effectif indisponible pour le moment."; }
+  } else {
+    // Saison passée : joueurs ayant joué pour l'équipe cette saison (l'effectif ESPN est celui d'aujourd'hui)
+    const names = [...new Set(rows.map(r => r.name))];
+    roster = names.map(n => ({ name: n, num: "", pos: "" })).sort((x, y) => x.name.localeCompare(y.name, "fr"));
+  }
   const rosterRows = roster.map(p => {
     const s = statOf.get(p.name);
     return `<tr><td>${esc(p.num)}</td><td><a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td>${esc(p.pos)}</td><td>${s ? esc(s.games) : "–"}</td><td>${s ? esc(f1(s.avg.pts)) : "–"}</td></tr>`;
@@ -1713,10 +1721,15 @@ const NAT_OF = new Map(Object.entries(NAT_BY_COUNTRY).flatMap(([c, names]) => na
 
 async function allStarHTML() {
   const season = state.season;
-  const day = ALLSTAR_DAY[season];
-  if (!day) return `<section class="card"><p class="empty">Le All-Star Game de la saison ${esc(season)} n'a pas encore eu lieu.</p></section>`;
   let raw;
   try { raw = await loadSeason(season); } catch (e) { raw = { rows: [] }; }
+  const day = raw.allstar;   // date du All-Star Game de la saison, lue dans les données de la saison
+  if (!day) {
+    const msg = season === CURRENT_SEASON
+      ? "Le All-Star Game de cette saison n'a pas encore eu lieu."
+      : "Pas de All-Star Game pour cette saison (il n'a pas eu lieu : première édition en 1951, pas de match en 1999).";
+    return `<section class="card"><p class="empty">${esc(msg)}</p></section>`;
+  }
   const before = raw.rows.filter(r => r.phase === "regular" && r.day < day);
   if (!before.length) return `<section class="card"><p class="empty">Données de la saison ${esc(season)} pas encore disponibles.</p></section>`;
   const dayFr = new Date(day + "T12:00:00Z").toLocaleDateString("fr-FR", {timeZone: "UTC", day: "numeric", month: "long", year: "numeric"});
