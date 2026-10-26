@@ -176,7 +176,7 @@ h2.ph{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.68</div>
+<div class="ver">v1.69</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1561,7 +1561,7 @@ async function teamHTML(name) {
 }
 
 // ---------- All-Star : 16 Américains et 8 internationaux, selon le Game Score moyen ----------
-const ALLSTAR_MIN_GAMES = 10;   // matchs minimum pour être retenu
+const ALLSTAR_MIN_GAMES = 3;   // matchs minimum pour être retenu
 const ALLSTAR_US = 16, ALLSTAR_INTL = 8;
 async function allStarHTML() {
   const data = await loadGames();
