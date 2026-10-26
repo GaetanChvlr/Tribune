@@ -1,17 +1,36 @@
 name: Sonde ESPN (temporaire)
 on:
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Tester les saisons
         run: |
           B=https://site.api.espn.com/apis/site/v2/sports/basketball/nba
-          for y in $(seq 1950 2016); do
+          S=https://site.api.espn.com/apis/v2/sports/basketball/nba
+          OUT=data/probe-espn.txt
+          : > $OUT
+          for y in 1950 1960 1970 1980 1985 1990 1995 2000 2003 2005 2008 2010 2012 2013 2014 2015 2016; do
             sb=$(curl -s -m 30 -o /tmp/sb.json -w "%{http_code}" "$B/scoreboard?dates=${y}1115")
-            n=$(node -e 'try{const j=require("/tmp/sb.json");console.log((j.events||[]).length)}catch(e){console.log("err")}')
-            st=$(curl -s -m 30 -o /tmp/st.json -w "%{http_code}" "https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season=$((y+1))")
-            ns=$(node -e 'try{const j=require("/tmp/st.json");console.log(JSON.stringify(j).match(/"displayName":"[^"]*Conference[^"]*"/g)?.length ?? 0)}catch(e){console.log("err")}')
-            echo "saison $y-$((y+1)) : scoreboard HTTP $sb ($n matchs le 15 nov.) | classement HTTP $st (groupes: $ns)"
+            n=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("/tmp/sb.json","utf8"));console.log((j.events||[]).length)}catch(e){console.log("err")}')
+            eid=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("/tmp/sb.json","utf8"));console.log(j.events[0].id)}catch(e){console.log("")}')
+            sm="-"
+            if [ -n "$eid" ]; then
+              sm=$(curl -s -m 30 -o /tmp/sm.json -w "%{http_code}" "$B/summary?event=$eid")
+              sm="$sm/$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("/tmp/sm.json","utf8"));console.log((j.boxscore?.players||[]).reduce((a,t)=>a+(t.statistics?.[0]?.athletes||[]).length,0)+" joueurs")}catch(e){console.log("err")}')"
+            fi
+            st=$(curl -s -m 30 -o /tmp/st.json -w "%{http_code}" "$S/standings?season=$((y+1))")
+            cel=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("/tmp/st.json","utf8"));let r="";const walk=(g)=>{for(const e of (g.standings?.entries||[])){if((e.team?.displayName||"").includes("Celtics")){r=(e.stats||[]).filter(s=>["wins","losses"].includes(s.name)).map(s=>s.name+"="+s.displayValue).join(" ")}};for(const c of (g.children||[]))walk(c)};walk(j);console.log(r||"absent")}catch(e){console.log("err")}')
+            echo "saison $y-$((y+1)) : scoreboard $sb ($n matchs le 15 nov., summary $sm) | classement season=$((y+1)) HTTP $st, Celtics: $cel" >> $OUT
           done
+          cat $OUT
+      - name: Enregistrer le résultat
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/probe-espn.txt
+          git commit -m "Sonde ESPN" && git push || true
