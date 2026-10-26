@@ -188,7 +188,7 @@ table.tbl td.win{font-weight:700}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.77</div>
+<div class="ver">v1.78</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -225,7 +225,7 @@ const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 const state = {
   league: "NBA", tab: "home", detail: null, teamFilter: "",
   screen: "app", homePeriod: "saison", calTeamFilter: "", matchView: "cal", raceId: null,
-  statsView: "leaders", statsPeriod: "nuit", statsKey: "", calWeek: null, resWeek: null, profile: null, season: "2026-27", phase: "regular", cmp: { a: { season: "2026-27", phase: "regular", player: "" }, b: { season: "2025-26", phase: "regular", player: "" } }
+  statsView: "leaders", atView: "moy", statsPeriod: "nuit", statsKey: "", calWeek: null, resWeek: null, profile: null, season: "2026-27", phase: "regular", cmp: { a: { season: "2026-27", phase: "regular", player: "" }, b: { season: "2025-26", phase: "regular", player: "" } }
 };
 let favs = loadFavs();           // équipes par championnat
 let players = loadPlayers();     // joueurs favoris
@@ -1760,16 +1760,34 @@ async function statsWide() {
   return head + await allStarHTML();
 }
 
-// All Time : chaque ligne est une moyenne d'un joueur sur une saison
+// All Time : moyennes par joueur et par saison, ou grosses perfs (un seul match), toutes saisons
 async function allTimeHTML() {
   let at;
   try { at = await loadAllTime(); } catch (e) {
     return '<section class="card"><p class="empty">Classement All Time indisponible pour le moment.</p></section>';
   }
   const phase = state.phase;
+  const range = `${SEASONS[SEASONS.length - 1]} à ${SEASONS[0]}`;
+  const cats = [...CATS, { key: "gs", label: "Game Score" }];
+  const nav = `<div class="sview">${[["moy", "Moyennes par saison"], ["perfs", "Grosses perfs"]]
+    .map(([k, l]) => `<button data-atv="${k}" class="${k === state.atView ? "on" : ""}">${l}</button>`).join("")}</div>`;
+
+  if (state.atView === "perfs") {
+    const per = at.perfs?.[phase];
+    if (!per) return nav + '<section class="card"><p class="empty">Grosses perfs pas encore calculées.</p></section>';
+    const body = cats.map(c => {
+      const list = (per[c.key] || []).slice(0, 10);
+      const rows = list.map((r, i) =>
+        `<tr><td>${i + 1}. <a class="lnk" data-player="${esc(r.n)}">${esc(r.n)}</a></td><td>${esc(r.s)}</td><td><a class="lnk" data-team="${esc(r.t)}">${esc(ab(r.t))}</a> – ${esc(ab(r.o))}<div class="meta">${esc(r.ts)}-${esc(r.os)} · ${esc(shortDay(r.d))}</div></td><td><b>${esc(f1(r.v))}</b></td></tr>`).join("");
+      return `<section class="card"><h2>${esc(c.label)}</h2>${list.length
+        ? `<table class="tbl"><tr><th>Joueur</th><th>Saison</th><th>Match</th><th>Valeur</th></tr>${rows}</table>`
+        : '<p class="empty">Aucune performance.</p>'}</section>`;
+    }).join("");
+    return nav + `<p class="meta">Meilleure performance d'un seul match, ${phaseLabel().toLowerCase()}, toutes saisons ${range}</p>` + body;
+  }
+
   const minG = phase === "playoffs" ? 3 : 20;
   const entries = at.entries.filter(e => e.p === phase && e.g >= minG);
-  const cats = [...CATS, { key: "gs", label: "Game Score" }];
   const body = cats.map(c => {
     const list = [...entries].sort((x, y) => y.v[c.key] - x.v[c.key]).slice(0, 10);
     const rows = list.map((e, i) =>
@@ -1778,7 +1796,7 @@ async function allTimeHTML() {
       ? `<table class="tbl"><tr><th>Joueur</th><th>Saison</th><th>Équipe</th><th>Moy.</th><th>Matchs</th></tr>${rows}</table>`
       : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
   }).join("");
-  return `<p class="meta">Moyennes par saison, ${phaseLabel().toLowerCase()} · ${minG} matchs minimum · toutes saisons 2016-17 à 2026-27</p>` + body;
+  return nav + `<p class="meta">Moyennes par saison, ${phaseLabel().toLowerCase()} · ${minG} matchs minimum · toutes saisons ${range}</p>` + body;
 }
 
 // Comparateur : deux joueurs, chacun avec sa saison et sa phase
@@ -1966,6 +1984,8 @@ appEl.addEventListener("click", e => {
   if (mv) { state.matchView = mv.dataset.mview; state.raceId = null; render({silent: true}); return; }
   const hb = e.target.closest("button[data-home]");
   if (hb) { state.homePeriod = hb.dataset.home; render({silent: true}); return; }
+  const atb = e.target.closest("button[data-atv]");
+  if (atb) { state.atView = atb.dataset.atv; render({silent: true}); return; }
   const sp = e.target.closest("button[data-stat]");
   if (sp) { state.statsPeriod = sp.dataset.stat; state.statsKey = ""; render({silent: true}); return; }
   const sv = e.target.closest("button[data-sview]");
