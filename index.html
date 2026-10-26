@@ -188,7 +188,7 @@ table.tbl td.win{font-weight:700}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.78</div>
+<div class="ver">v1.79</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1021,7 +1021,7 @@ async function homeMatchesHTML(league) {
 
 function homeMvpHTML(data) {
   if (!data.rows.length) {
-    return `<section class="card"><h2>MVP de la nuit dernière</h2><p class="empty">Données pas encore disponibles${GAMES_ERR ? "" : " pour cette saison"}.</p></section>`;
+    return `<section class="card"><h2>MVP de la nuit dernière</h2><p class="empty">${esc(noDataText())}</p></section>`;
   }
   const refDay = data.rows.reduce((m, r) => (r.day > m ? r.day : m), "");
   const top = data.rows.filter(r => r.day === refDay).sort((a, b) => b.gs - a.gs).slice(0, 3);
@@ -1043,7 +1043,7 @@ function homePlayersHTML(data) {
     return `<section class="card"><h2>Mes joueurs favoris</h2>${nav}<p class="empty">Ajoutez des joueurs dans l'onglet Favoris.</p></section>`;
   }
   if (!data.rows.length) {
-    return `<section class="card"><h2>Mes joueurs favoris</h2>${nav}<p class="empty">Données pas encore disponibles.</p></section>`;
+    return `<section class="card"><h2>Mes joueurs favoris</h2>${nav}<p class="empty">${esc(noDataText())}</p></section>`;
   }
   const refDay = data.rows.reduce((m, r) => (r.day > m ? r.day : m), "");
   const key = periodKeyOf(per, refDay);
@@ -1085,6 +1085,14 @@ async function homeHTML() {
   return `<div class="cols"><div class="col">${matches}</div><div class="col">${homeMvpHTML(data)}${homePlayersHTML(data)}</div></div>`;
 }
 
+// Message quand une saison n'a pas de données joueurs : avant 1993-94, ESPN ne fournit pas les feuilles de match
+function noDataText(season = state.season) {
+  if (season !== CURRENT_SEASON && Number(season.slice(0, 4)) < 1993) {
+    return "Pas de feuilles de match joueurs pour cette saison : ESPN ne les fournit qu'à partir de 1993-94. Le classement reste disponible.";
+  }
+  return "Données pas encore disponibles.";
+}
+
 // Programme d'une saison terminée : tous ses matchs (joueurs de la saison et de la phase choisies)
 async function pastResultsHTML() {
   const data = await loadGames();
@@ -1104,14 +1112,14 @@ async function pastResultsHTML() {
   const shown = all.filter(e => !state.teamFilter || e.cs.some(c => c.name === state.teamFilter));
   const select = `<select class="filter" id="teamFilter"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}"${t === state.teamFilter ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
   const body = shown.map(e => matchHTML(e)).join("");
-  const empty = data.rows.length ? "Aucun match pour cette sélection." : "Données pas encore disponibles.";
+  const empty = data.rows.length ? "Aucun match pour cette sélection." : noDataText();
   return `<section class="card"><h2>Matchs : ${esc(state.season)}</h2><p class="meta">${phaseLabel()}</p>${select}${shown.length ? body : `<p class="empty">${empty}</p>`}</section>`;
 }
 
 // Meilleures performances individuelles de la saison (Game Score), pour l'accueil d'une saison terminée
 function seasonTopHTML(data) {
   if (!data.rows.length) {
-    return `<section class="card"><h2>Meilleures performances</h2><p class="empty">Données pas encore disponibles.</p></section>`;
+    return `<section class="card"><h2>Meilleures performances</h2><p class="empty">${esc(noDataText())}</p></section>`;
   }
   const items = [...data.rows].sort((a, b) => b.gs - a.gs).slice(0, 5).map((r, i) => `
     <div class="pl-row">
@@ -1231,7 +1239,7 @@ async function statsHTML() {
   const views = statsViewsHTML();
 
   if (!data.rows.length) {
-    return `${nav}<section class="card"><p class="empty">Données pas encore disponibles${GAMES_ERR ? "" : " pour cette saison"}.</p></section>`;
+    return `${nav}<section class="card"><p class="empty">${esc(noDataText())}</p></section>`;
   }
 
   const keys = periodKeys(per, data.rows);
@@ -1731,7 +1739,7 @@ async function allStarHTML() {
     return `<section class="card"><p class="empty">${esc(msg)}</p></section>`;
   }
   const before = raw.rows.filter(r => r.phase === "regular" && r.day < day);
-  if (!before.length) return `<section class="card"><p class="empty">Données de la saison ${esc(season)} pas encore disponibles.</p></section>`;
+  if (!before.length) return `<section class="card"><p class="empty">${esc(noDataText(season))}</p></section>`;
   const dayFr = new Date(day + "T12:00:00Z").toLocaleDateString("fr-FR", {timeZone: "UTC", day: "numeric", month: "long", year: "numeric"});
   const eligible = averages(before, ALLSTAR_MIN_GAMES).sort((a, b) => b.avg.gs - a.avg.gs);
   const countryOf = p => NAT_OF.get(normName(p.name)) || "USA";
