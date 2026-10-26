@@ -188,7 +188,7 @@ table.tbl td.win{font-weight:700}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.79</div>
+<div class="ver">v1.80</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -626,8 +626,8 @@ async function loadTeams(league) {
 
 // Saisons : data/games.json (saison en cours) et data/games-AAAA-AA.json (saisons passées)
 const CURRENT_SEASON = "2026-27";
-// Saisons de 2026-27 à 1949-50 (la plus récente en premier)
-const SEASONS = Array.from({length: 2026 - 1949 + 1}, (_, i) => {
+// Saisons de 2026-27 à 1993-94 (la plus récente en premier) : ESPN ne fournit pas les données joueurs avant
+const SEASONS = Array.from({length: 2026 - 1993 + 1}, (_, i) => {
   const y = 2026 - i;
   return `${y}-${String((y + 1) % 100).padStart(2, "0")}`;
 });
@@ -1085,11 +1085,8 @@ async function homeHTML() {
   return `<div class="cols"><div class="col">${matches}</div><div class="col">${homeMvpHTML(data)}${homePlayersHTML(data)}</div></div>`;
 }
 
-// Message quand une saison n'a pas de données joueurs : avant 1993-94, ESPN ne fournit pas les feuilles de match
-function noDataText(season = state.season) {
-  if (season !== CURRENT_SEASON && Number(season.slice(0, 4)) < 1993) {
-    return "Pas de feuilles de match joueurs pour cette saison : ESPN ne les fournit qu'à partir de 1993-94. Le classement reste disponible.";
-  }
+// Message quand une saison n'a pas encore de données
+function noDataText() {
   return "Données pas encore disponibles.";
 }
 
@@ -1739,7 +1736,7 @@ async function allStarHTML() {
     return `<section class="card"><p class="empty">${esc(msg)}</p></section>`;
   }
   const before = raw.rows.filter(r => r.phase === "regular" && r.day < day);
-  if (!before.length) return `<section class="card"><p class="empty">${esc(noDataText(season))}</p></section>`;
+  if (!before.length) return `<section class="card"><p class="empty">${esc(noDataText())}</p></section>`;
   const dayFr = new Date(day + "T12:00:00Z").toLocaleDateString("fr-FR", {timeZone: "UTC", day: "numeric", month: "long", year: "numeric"});
   const eligible = averages(before, ALLSTAR_MIN_GAMES).sort((a, b) => b.avg.gs - a.avg.gs);
   const countryOf = p => NAT_OF.get(normName(p.name)) || "USA";
