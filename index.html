@@ -181,7 +181,7 @@ table.tbl td.win{font-weight:700}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.74</div>
+<div class="ver">v1.75</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -632,23 +632,30 @@ async function readGamesFile(file) {
   return { season: j.seasonLabel || "", updated: j.updated || "", rows };
 }
 async function loadSeason(label) {
+  // La saison en cours n'est pas gardée en mémoire : elle change chaque nuit
+  if (label === CURRENT_SEASON) return readGamesFile(seasonFile(label));
   if (!SEASON_CACHE.has(label)) {
     SEASON_CACHE.set(label, readGamesFile(seasonFile(label)).catch(e => { SEASON_CACHE.delete(label); throw e; }));
   }
   return SEASON_CACHE.get(label);
 }
-// Données de la saison et de la phase choisies dans la barre (utilisées par toutes les pages)
+// Données de la saison et de la phase choisies dans la barre (utilisées par toutes les pages).
+// Le cache est repéré par saison + phase : une réponse tardive d'une ancienne saison ne peut plus l'écraser.
+let GAMES_KEY = "";
 async function loadGames() {
-  if (GAMES) return GAMES;
+  const season = state.season, phase = state.phase, key = season + "|" + phase;
+  if (GAMES && GAMES_KEY === key) return GAMES;
+  let g;
   try {
-    const raw = await loadSeason(state.season);
-    GAMES = { season: raw.season || state.season, updated: raw.updated, rows: raw.rows.filter(r => r.phase === state.phase) };
+    const raw = await loadSeason(season);
+    g = { season: raw.season || season, updated: raw.updated, rows: raw.rows.filter(r => r.phase === phase) };
     GAMES_ERR = null;
   } catch (e) {
     GAMES_ERR = e.message;
-    GAMES = { season: "", updated: "", rows: [] };
+    g = { season: "", updated: "", rows: [] };
   }
-  return GAMES;
+  GAMES = g; GAMES_KEY = key;
+  return g;
 }
 // Saison régulière 2025-26, pour la page All-Star
 async function loadPrevGames() {
