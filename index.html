@@ -176,7 +176,7 @@ h2.ph{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.67</div>
+<div class="ver">v1.68</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -194,7 +194,8 @@ const TABS = [
   {key: "cal", label: "Programme"},
   {key: "standings", label: "Classement"},
   {key: "stats", label: "Stats"},
-  {key: "favs", label: "Favoris"}
+  {key: "favs", label: "Favoris"},
+  {key: "allstar", label: "All-Star"}
 ];
 const PERIODS = [["nuit", "Nuit"], ["semaine", "Semaine"], ["mois", "Mois"], ["saison", "Saison"]];
 const CATS = [
@@ -1462,7 +1463,8 @@ async function rosterOf(teamName) {
     const list = (r.athletes || []).flatMap(a => a.items || [a]).map(a => ({
       name: a.fullName || a.displayName || "",
       pos: a.position?.abbreviation || a.position?.displayName || "",
-      num: a.jersey || ""
+      num: a.jersey || "",
+      country: a.birthPlace?.country || ""
     })).filter(p => p.name);
     rosterById.set(id, list);
   }
@@ -1558,6 +1560,36 @@ async function teamHTML(name) {
   </section>`;
 }
 
+// ---------- All-Star : 16 Américains et 8 internationaux, selon le Game Score moyen ----------
+const ALLSTAR_MIN_GAMES = 10;   // matchs minimum pour être retenu
+const ALLSTAR_US = 16, ALLSTAR_INTL = 8;
+async function allStarHTML() {
+  const data = await loadGames();
+  const teams = await loadTeams("NBA");
+  const res = await Promise.allSettled(teams.map(t => rosterOf(t)));
+  const countryOf = new Map();
+  for (const r of res) {
+    if (r.status === "fulfilled") for (const p of r.value) countryOf.set(p.name, p.country);
+  }
+  const isUS = c => /^(usa|us|united states|états-unis|etats-unis)$/i.test(String(c || "").trim());
+  const eligible = averages(data.rows, ALLSTAR_MIN_GAMES).sort((a, b) => b.avg.gs - a.avg.gs);
+  const us = eligible.filter(p => isUS(countryOf.get(p.name))).slice(0, ALLSTAR_US);
+  const intl = eligible.filter(p => { const c = countryOf.get(p.name); return c && !isUS(c); }).slice(0, ALLSTAR_INTL);
+  const unknown = eligible.filter(p => !countryOf.get(p.name)).length;
+
+  const table = list => list.length
+    ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>GmSc</th><th>Pts</th></tr>${list.map(p =>
+        `<tr><td>${pdot(p.pc, p.pa)}<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.teamShort))}</a></td><td><b>${esc(f1(p.avg.gs))}</b></td><td>${esc(f1(p.avg.pts))}</td></tr>`).join("")}</table>`
+    : '<p class="empty">Aucun joueur qualifié.</p>';
+
+  if (!data.rows.length) {
+    return `<section class="card"><p class="empty">Données pas encore disponibles pour cette saison.</p></section>`;
+  }
+  return `<section class="card"><h2>Américains (${us.length}/${ALLSTAR_US})</h2>${table(us)}</section>
+    <section class="card"><h2>Internationaux (${intl.length}/${ALLSTAR_INTL})</h2>${table(intl)}</section>
+    <p class="meta">Sélection indicative selon le Game Score moyen de la saison (${ALLSTAR_MIN_GAMES} matchs minimum). Le vrai All-Star dépend des votes.${unknown ? ` ${unknown} joueur(s) sans pays renseigné sont exclus.` : ""}</p>`;
+}
+
 function scheduleRefresh() {
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
@@ -1620,6 +1652,8 @@ async function render(opts = {}) {
         const select = `<select class="filter" id="teamFilter"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}"${t === state.teamFilter ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
         const body = shown.map(e => matchHTML(e)).join("");
         html = `${mviewNav()}<section class="card"><h2>Résultats : saison en cours</h2>${select}${shown.length ? body : '<p class="empty">Aucun résultat pour cette sélection.</p>'}</section>`;
+      } else if (state.tab === "allstar") {
+        html = await allStarHTML();
       } else if (state.tab === "standings") {
         html = await standingsHTML(L);
       } else if (state.tab === "stats") {
