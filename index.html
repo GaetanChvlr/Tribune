@@ -202,7 +202,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.94</div>
+<div class="ver">v1.95</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -666,8 +666,7 @@ async function readGamesFile(file) {
     pts: a[idx.pts], reb: a[idx.reb], ast: a[idx.ast], stl: a[idx.stl], blk: a[idx.blk],
     tpm: a[idx.tpm], gs: a[idx.gmsc], pc: a[idx.couleur] || "", pa: a[idx.couleur_alt] || "",
     phase: a[idx.phase] || "regular", event: a[idx.match] || "", logo: a[idx.logo] || "",
-    // DPOY : indice défensif par match = 2 × interceptions + 2 × contres + rebonds défensifs
-    dreb: a[idx.dreb] || 0, oreb: a[idx.oreb] || 0, dpoy: 2 * (a[idx.stl] || 0) + 2 * (a[idx.blk] || 0) + (a[idx.dreb] || 0)
+    dreb: a[idx.dreb] || 0, oreb: a[idx.oreb] || 0, min: a[idx.min] || 0
   }));
   // Logos des équipes (y compris les franchises disparues) : mémorisés pour toutes les pages
   for (const r of rows) if (r.team && r.logo && !TEAM_LOGOS[r.team]) TEAM_LOGOS[r.team] = r.logo;
@@ -742,12 +741,12 @@ function averages(rows, minGames) {
     if (!e) {
       e = { name: r.name, team: r.team, teamShort: r.teamShort, pc: r.pc, pa: r.pa, games: 0, sum: {} };
       CATS.forEach(c => e.sum[c.key] = 0);
-      e.sum.gs = 0; e.sum.dreb = 0; e.sum.oreb = 0; e.sum.dpoy = 0;
+      e.sum.gs = 0; e.sum.dreb = 0; e.sum.oreb = 0;
       acc.set(k, e);
     }
     e.games++;
     CATS.forEach(c => e.sum[c.key] += r[c.key]);
-    e.sum.gs += r.gs; e.sum.dreb += r.dreb; e.sum.oreb += r.oreb; e.sum.dpoy += r.dpoy;
+    e.sum.gs += r.gs; e.sum.dreb += r.dreb; e.sum.oreb += r.oreb;
   }
   return [...acc.values()].filter(e => e.games >= minGames).map(e => {
     const avg = {};
@@ -1831,6 +1830,40 @@ function trophyTable(title, note, heads, list, cells, minText) {
     : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
 }
 
+// DPOY : indice défensif (formule proposée et testée sur 2025-26)
+const DPOY_W = {stl: 1, blk: 0.7, dreb: 0.2, team: 0.1, minPerGame: 15};
+function dpoyList(subset, minGames) {
+  // Points encaissés par équipe (moyenne sur la période), puis moyenne de la ligue
+  const teamGames = new Map();
+  for (const r of subset) {
+    const k = r.event + "|" + r.team;
+    if (!teamGames.has(k)) teamGames.set(k, {team: r.team, os: r.os});
+  }
+  const tAcc = new Map();
+  for (const g of teamGames.values()) {
+    const x = tAcc.get(g.team) || {n: 0, s: 0};
+    x.n++; x.s += g.os; tAcc.set(g.team, x);
+  }
+  const teamPpg = new Map([...tAcc].map(([t, x]) => [t, x.s / x.n]));
+  const league = teamPpg.size ? [...teamPpg.values()].reduce((a, b) => a + b, 0) / teamPpg.size : 0;
+  // Totaux par joueur sur la période
+  const P = new Map();
+  for (const r of subset) {
+    const k = r.name + "|" + r.team;
+    const x = P.get(k) || {name: r.name, team: r.team, teamShort: r.teamShort, pc: r.pc, pa: r.pa, n: 0, min: 0, stl: 0, blk: 0, dreb: 0};
+    x.n++; x.min += r.min; x.stl += r.stl; x.blk += r.blk; x.dreb += r.dreb;
+    P.set(k, x);
+  }
+  return [...P.values()]
+    .filter(x => x.n >= minGames && x.min > 0 && x.min / x.n >= DPOY_W.minPerGame)
+    .map(x => {
+      const per36 = 36 * (DPOY_W.stl * x.stl + DPOY_W.blk * x.blk + DPOY_W.dreb * x.dreb) / x.min;
+      const teamTerm = DPOY_W.team * (league - (teamPpg.get(x.team) ?? league));
+      return {...x, games: x.n, minPg: x.min / x.n, idx: per36 + teamTerm};
+    })
+    .sort((a, b) => b.idx - a.idx);
+}
+
 async function seasonStatsHTML() {
   if (state.league !== "NBA") return '<section class="card"><p class="empty">Statistiques joueurs bientôt disponibles pour ce championnat.</p></section>';
   const data = await loadGames();
@@ -1902,11 +1935,11 @@ async function seasonStatsHTML() {
       ["Saison passée", "Actuel", "Δ", "Matchs"], list,
       p => [f1(p.prevGs), f1(p.avg.gs), `${p.delta >= 0 ? "+" : ""}${f1(p.delta)}`, p.games], minText);
   } else if (state.statsView === "dpoy") {
-    // Indice défensif : 2 × interceptions + 2 × contres + rebonds défensifs, par match
-    const list = [...averages(subset, minGames)].sort((a, b) => b.avg.dpoy - a.avg.dpoy).slice(0, 10);
-    body = trophyTable("DPOY · Défense", "Indice = 2 × interceptions + 2 × contres + rebonds défensifs, par match",
-      ["Indice", "Reb. déf.", "Int.", "Contres", "Matchs"], list,
-      p => [f1(p.avg.dpoy), f1(p.avg.dreb), f1(p.avg.stl), f1(p.avg.blk), p.games], minText);
+    const list = dpoyList(subset, minGames).slice(0, 10);
+    body = trophyTable("DPOY · Défense",
+      "Indice = 36 × (1·int. + 0,7·contres + 0,2·reb. déf.) / minutes + 0,1 × (points encaissés moy. de la ligue − ceux de l'équipe) · 15 min par match minimum",
+      ["Indice", "Min/match", "Matchs"], list,
+      p => [f1(p.idx), f1(p.minPg), p.games], minText);
   }
 
   return `${nav}<section class="card" style="margin-bottom:0"><p class="meta">${esc(GAMES?.season || "")} · ${phaseLabel()}</p>${select}${scopeSelect}${views}</section>${body}`;
