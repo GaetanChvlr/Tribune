@@ -186,7 +186,8 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 .fc-l{font-size:10px;fill:var(--muted)}
 .cmpcol select,.cmpcol input{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--muted);background:var(--card);color:var(--text);font:inherit;box-sizing:border-box}
 .wp{display:flex;height:22px;border-radius:6px;overflow:hidden;margin:4px auto 2px;max-width:320px;font:700 12px/22px system-ui,sans-serif}
-.wp span{display:block;text-align:center;white-space:nowrap;overflow:hidden;min-width:0;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+.wp span{display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden;min-width:0}
+.wp i{font-style:normal;color:#fff;background:rgba(0,0,0,.75);padding:0 7px;border-radius:5px;line-height:18px}
 .wpc{text-align:center;font-size:11px;color:var(--muted);margin:0 0 6px}
 </style>
 </head>
@@ -200,7 +201,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.87</div>
+<div class="ver">v1.88</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1342,7 +1343,7 @@ async function winProbFor(a, b, isoDate) {
 // Segment de barre aux deux couleurs de l'équipe (principale en haut, secondaire en bas)
 function wpSegHTML(pct, pair) {
   const p = String(pair.p || "555").replace("#", ""), s = String(pair.s || p).replace("#", "");
-  return `<span style="width:${pct}%;background:linear-gradient(#${p} 50%,#${s} 50%)">${pct}%</span>`;
+  return `<span style="width:${pct}%;background:linear-gradient(#${p} 50%,#${s} 50%)"><i>${pct}%</i></span>`;
 }
 function winBarHTML(wp, nameA, nameB, pairA, pairB) {
   const pa = Math.round(wp.a * 100), pb = 100 - pa;
