@@ -186,7 +186,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 .fc-l{font-size:10px;fill:var(--muted)}
 .cmpcol select,.cmpcol input{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--muted);background:var(--card);color:var(--text);font:inherit;box-sizing:border-box}
 .wp{display:flex;height:22px;border-radius:6px;overflow:hidden;margin:4px auto 2px;max-width:320px;font:700 12px/22px system-ui,sans-serif}
-.wp span{display:block;text-align:center;white-space:nowrap;overflow:hidden;min-width:0;color:#fff}
+.wp span{display:block;text-align:center;white-space:nowrap;overflow:hidden;min-width:0;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.7)}
 .wpc{text-align:center;font-size:11px;color:var(--muted);margin:0 0 6px}
 </style>
 </head>
@@ -200,7 +200,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.86</div>
+<div class="ver">v1.87</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1339,16 +1339,15 @@ async function winProbFor(a, b, isoDate) {
     return winProbOf(raw.rows, a, b, day);
   } catch (e) { return null; }
 }
-// Texte noir ou blanc selon la luminosité de la couleur de fond
-function inkOn(hex) {
-  return brightness(String(hex).replace("#", "")) > 0.6 ? "#000" : "#fff";
+// Segment de barre aux deux couleurs de l'équipe (principale en haut, secondaire en bas)
+function wpSegHTML(pct, pair) {
+  const p = String(pair.p || "555").replace("#", ""), s = String(pair.s || p).replace("#", "");
+  return `<span style="width:${pct}%;background:linear-gradient(#${p} 50%,#${s} 50%)">${pct}%</span>`;
 }
-function winBarHTML(wp, nameA, nameB, colA, colB) {
+function winBarHTML(wp, nameA, nameB, pairA, pairB) {
   const pa = Math.round(wp.a * 100), pb = 100 - pa;
-  const cA = String(colA || "555").replace("#", ""), cB = String(colB || "888").replace("#", "");
   return `<div class="wp" role="img" aria-label="${esc(nameA)} ${pa} %, ${esc(nameB)} ${pb} %">` +
-    `<span style="width:${pa}%;background:#${cA};color:${inkOn(cA)}">${pa}%</span>` +
-    `<span style="width:${pb}%;background:#${cB};color:${inkOn(cB)}">${pb}%</span></div>` +
+    wpSegHTML(pa, pairA) + wpSegHTML(pb, pairB) + `</div>` +
     `<p class="wpc">Prédiction de victoire</p>`;
 }
 
@@ -1427,7 +1426,7 @@ async function detailHTML(id, league) {
   let wpBar = "";
   if (st.state === "pre" && comps.length === 2 && a.team?.displayName && b.team?.displayName) {
     const wp = await winProbFor(a.team.displayName, b.team.displayName, comp.date || j.header?.date);
-    if (wp) wpBar = winBarHTML(wp, shortName(a), shortName(b), colorOf(a.team), colorOf(b.team));
+    if (wp) wpBar = winBarHTML(wp, shortName(a), shortName(b), pairOf(a.team), pairOf(b.team));
   }
 
   const head = comps.length === 2
