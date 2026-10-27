@@ -54,7 +54,7 @@ body{padding-bottom:calc(92px + env(safe-area-inset-bottom))!important}
 .nm2 .tn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nm2 .rk{white-space:nowrap}
 .nm2.win .tn{color:var(--text);font-weight:700}
-.mid{min-width:72px;padding:0 6px;font-size:14px;white-space:nowrap}
+.mid{min-width:72px;padding:0 6px;font-size:14px;white-space:nowrap;text-align:center}
 .mid b{font-size:17px}
 .mid .sc{font-size:17px;font-weight:400}
 .mid .sc.w{font-weight:800}
@@ -200,7 +200,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.85</div>
+<div class="ver">v1.86</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1339,12 +1339,16 @@ async function winProbFor(a, b, isoDate) {
     return winProbOf(raw.rows, a, b, day);
   } catch (e) { return null; }
 }
+// Texte noir ou blanc selon la luminosité de la couleur de fond
+function inkOn(hex) {
+  return brightness(String(hex).replace("#", "")) > 0.6 ? "#000" : "#fff";
+}
 function winBarHTML(wp, nameA, nameB, colA, colB) {
   const pa = Math.round(wp.a * 100), pb = 100 - pa;
   const cA = String(colA || "555").replace("#", ""), cB = String(colB || "888").replace("#", "");
   return `<div class="wp" role="img" aria-label="${esc(nameA)} ${pa} %, ${esc(nameB)} ${pb} %">` +
-    `<span style="width:${pa}%;background:#${cA};color:${textColor(cA) || "#fff"}">${pa}%</span>` +
-    `<span style="width:${pb}%;background:#${cB};color:${textColor(cB) || "#fff"}">${pb}%</span></div>` +
+    `<span style="width:${pa}%;background:#${cA};color:${inkOn(cA)}">${pa}%</span>` +
+    `<span style="width:${pb}%;background:#${cB};color:${inkOn(cB)}">${pb}%</span></div>` +
     `<p class="wpc">Prédiction de victoire</p>`;
 }
 
@@ -1429,7 +1433,7 @@ async function detailHTML(id, league) {
   const head = comps.length === 2
     ? `<div class="row">
          <div class="side">${logo(a)}</div>
-         <div class="mid"><b class="big">${esc(a.score)} - ${esc(b.score)}</b></div>
+         <div class="mid">${st.state === "pre" ? '<b class="big">vs</b>' : `<b class="big">${esc(a.score)} - ${esc(b.score)}</b>`}</div>
          <div class="side">${logo(b)}</div>
        </div>
        ${wpBar}
