@@ -202,7 +202,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.92</div>
+<div class="ver">v1.93</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -662,7 +662,9 @@ async function readGamesFile(file) {
     opp: a[idx.adversaire], ts: a[idx.score_equipe], os: a[idx.score_adversaire],
     pts: a[idx.pts], reb: a[idx.reb], ast: a[idx.ast], stl: a[idx.stl], blk: a[idx.blk],
     tpm: a[idx.tpm], gs: a[idx.gmsc], pc: a[idx.couleur] || "", pa: a[idx.couleur_alt] || "",
-    phase: a[idx.phase] || "regular", event: a[idx.match] || "", logo: a[idx.logo] || ""
+    phase: a[idx.phase] || "regular", event: a[idx.match] || "", logo: a[idx.logo] || "",
+    // DPOY : indice défensif par match = 2 × interceptions + 2 × contres + rebonds défensifs
+    dreb: a[idx.dreb] || 0, dpoy: 2 * (a[idx.stl] || 0) + 2 * (a[idx.blk] || 0) + (a[idx.dreb] || 0)
   }));
   // Logos des équipes (y compris les franchises disparues) : mémorisés pour toutes les pages
   for (const r of rows) if (r.team && r.logo && !TEAM_LOGOS[r.team]) TEAM_LOGOS[r.team] = r.logo;
@@ -737,12 +739,12 @@ function averages(rows, minGames) {
     if (!e) {
       e = { name: r.name, team: r.team, teamShort: r.teamShort, pc: r.pc, pa: r.pa, games: 0, sum: {} };
       CATS.forEach(c => e.sum[c.key] = 0);
-      e.sum.gs = 0;
+      e.sum.gs = 0; e.sum.dreb = 0; e.sum.dpoy = 0;
       acc.set(k, e);
     }
     e.games++;
     CATS.forEach(c => e.sum[c.key] += r[c.key]);
-    e.sum.gs += r.gs;
+    e.sum.gs += r.gs; e.sum.dreb += r.dreb; e.sum.dpoy += r.dpoy;
   }
   return [...acc.values()].filter(e => e.games >= minGames).map(e => {
     const avg = {};
@@ -1781,7 +1783,7 @@ function inScope(r) {
   return RANKS.get(r.team)?.conf === s;
 }
 function statsViewsHTML() {
-  return `<div class="sview">${[["leaders", "Leaders"], ["perfs", "Grosses perfs"], ["mvp", "MVP"], ["alltime", "All Time"], ["compare", "Comparateur"]]
+  return `<div class="sview">${[["leaders", "Leaders"], ["perfs", "Grosses perfs"], ["mvp", "MVP"], ["roy", "ROY"], ["mip", "MIP"], ["dpoy", "DPOY"], ["alltime", "All Time"], ["compare", "Comparateur"]]
     .map(([k, l]) => `<button data-sview="${k}" class="${k === state.statsView ? "on" : ""}">${l}</button>`).join("")}</div>`;
 }
 async function statsHTML() {
@@ -1794,6 +1796,37 @@ async function statsHTML() {
 }
 
 // ---------- Stats de la saison en cours : leaders, grosses perfs, MVP (par nuit, semaine, mois, saison) ----------
+
+// ---------- Trophées de saison : ROY, MIP, DPOY ----------
+const PREV_SEASON = SEASONS[SEASONS.indexOf(CURRENT_SEASON) + 1];
+// Première saison de chaque joueur dans la base (saisons régulières)
+function firstSeasonMap(at) {
+  const m = new Map();
+  for (const e of at.entries) {
+    if (e.p !== "regular") continue;
+    if (!m.has(e.n) || e.s < m.get(e.n)) m.set(e.n, e.s);
+  }
+  return m;
+}
+// Game Score moyen par joueur sur une saison (pondéré par les matchs, toutes équipes)
+function prevSeasonGs(at, season) {
+  const m = new Map();
+  for (const e of at.entries) {
+    if (e.p !== "regular" || e.s !== season) continue;
+    const x = m.get(e.n) || {g: 0, sum: 0};
+    x.g += e.g; x.sum += e.v.gs * e.g;
+    m.set(e.n, x);
+  }
+  for (const x of m.values()) x.gs = x.g ? x.sum / x.g : 0;
+  return m;
+}
+function trophyTable(title, note, heads, list, cells, minText) {
+  const rows = list.map((p, i) =>
+    `<tr><td>${i + 1}. ${pdot(p.pc, p.pa)}<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.teamShort))}</a></td>${cells(p).map(c => `<td>${esc(c)}</td>`).join("")}</tr>`).join("");
+  return `<section class="card"><h2>${esc(title)}</h2><p class="meta">${esc(note)} · ${esc(minText)}</p>${list.length
+    ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th>${heads.map(h => `<th>${esc(h)}</th>`).join("")}</tr>${rows}</table>`
+    : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
+}
 
 async function seasonStatsHTML() {
   if (state.league !== "NBA") return '<section class="card"><p class="empty">Statistiques joueurs bientôt disponibles pour ce championnat.</p></section>';
@@ -1840,7 +1873,7 @@ async function seasonStatsHTML() {
         : '<p class="empty">Aucune performance.</p>'}</section>`;
     }).join("");
     body = `<p class="meta">Meilleure performance d'un seul match, top 5 par catégorie</p>` + body;
-  } else {
+  } else if (state.statsView === "mvp") {
     const avgs = averages(subset, minGames);
     const list = [...avgs].sort((a, b) => b.avg.gs - a.avg.gs).slice(0, 10);
     const rows = list.map((p, i) =>
@@ -1848,6 +1881,29 @@ async function seasonStatsHTML() {
     body = `<section class="card"><h2>Top 10 MVP</h2><p class="meta">Game Score moyen · ${minText}</p>${list.length
       ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>GmSc</th><th>Matchs</th></tr>${rows}</table>`
       : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
+  } else if (state.statsView === "roy") {
+    // Recrues : joueurs absents de la base avant la saison en cours
+    const first = firstSeasonMap(await loadAllTime());
+    const list = [...averages(subset.filter(r => first.get(r.name) === CURRENT_SEASON), minGames)]
+      .sort((a, b) => b.avg.gs - a.avg.gs).slice(0, 10);
+    body = trophyTable("ROY · Recrues", "Game Score moyen des recrues", ["GmSc", "Matchs"], list,
+      p => [f1(p.avg.gs), p.games], minText);
+  } else if (state.statsView === "mip") {
+    // Progression : Game Score moyen de la période comparé à la saison passée
+    const prev = prevSeasonGs(await loadAllTime(), PREV_SEASON);
+    const list = [...averages(subset, minGames)]
+      .filter(p => prev.get(p.name) && prev.get(p.name).g >= 3)
+      .map(p => ({...p, prevGs: prev.get(p.name).gs, delta: p.avg.gs - prev.get(p.name).gs}))
+      .sort((a, b) => b.delta - a.delta).slice(0, 10);
+    body = trophyTable("MIP · Progression", `Game Score moyen vs ${PREV_SEASON} (3 matchs minimum en ${PREV_SEASON})`,
+      ["Saison passée", "Actuel", "Δ", "Matchs"], list,
+      p => [f1(p.prevGs), f1(p.avg.gs), `${p.delta >= 0 ? "+" : ""}${f1(p.delta)}`, p.games], minText);
+  } else if (state.statsView === "dpoy") {
+    // Indice défensif : 2 × interceptions + 2 × contres + rebonds défensifs, par match
+    const list = [...averages(subset, minGames)].sort((a, b) => b.avg.dpoy - a.avg.dpoy).slice(0, 10);
+    body = trophyTable("DPOY · Défense", "Indice = 2 × interceptions + 2 × contres + rebonds défensifs, par match",
+      ["Indice", "Reb. déf.", "Int.", "Contres", "Matchs"], list,
+      p => [f1(p.avg.dpoy), f1(p.avg.dreb), f1(p.avg.stl), f1(p.avg.blk), p.games], minText);
   }
 
   return `${nav}<section class="card" style="margin-bottom:0"><p class="meta">${esc(GAMES?.season || "")} · ${phaseLabel()}</p>${select}${scopeSelect}${views}</section>${body}`;
