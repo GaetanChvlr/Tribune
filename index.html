@@ -202,7 +202,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.89</div>
+<div class="ver">v1.90</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -239,7 +239,7 @@ const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 const state = {
   league: "NBA", tab: "home", detail: null, teamFilter: "",
   screen: "app", homePeriod: "saison", calTeamFilter: "", matchView: "cal", raceId: null,
-  statsView: "leaders", atView: "carriere", statsPeriod: "nuit", statsKey: "", calWeek: null, resWeek: null, profile: null, season: "2026-27", phase: "regular", cmp: [{ season: "2026-27", phase: "regular", player: "" }, { season: "2025-26", phase: "regular", player: "" }]
+  statsView: "leaders", atView: "carriere", statsPeriod: "nuit", statsKey: "", statsConf: "all", calWeek: null, resWeek: null, profile: null, season: "2026-27", phase: "regular", cmp: [{ season: "2026-27", phase: "regular", player: "" }, { season: "2025-26", phase: "regular", player: "" }]
 };
 let favs = loadFavs();           // équipes par championnat
 let players = loadPlayers();     // joueurs favoris
@@ -1109,7 +1109,7 @@ async function visualBlob(kind) {
   const data = await loadGames();
   const per = state.statsPeriod;
   const key = state.statsKey;
-  const subset = data.rows.filter(r => periodKeyOf(per, r.day) === key);
+  const subset = data.rows.filter(r => periodKeyOf(per, r.day) === key && inScope(r));
   const minGames = per === "mois" || per === "saison" ? 3 : 1;
   const avgs = averages(subset, minGames);
   let title, list, valueOf;
@@ -1137,7 +1137,7 @@ async function visualBlob(kind) {
   ctx.fillStyle = "#fafafa"; ctx.font = `800 96px ${F}`;
   ctx.fillText(fitText(ctx, title, W - 160), 80, 230);
   ctx.fillStyle = "#a1a1aa"; ctx.font = `500 38px ${F}`;
-  ctx.fillText(fitText(ctx, `${periodLabel(per, key)} · ${minGames === 3 ? "3 matchs minimum" : "1 match minimum"}`, W - 160), 80, 300);
+  ctx.fillText(fitText(ctx, `${periodLabel(per, key)} · ${scopeLabel()} · ${minGames === 3 ? "3 matchs minimum" : "1 match minimum"}`, W - 160), 80, 300);
 
   const top = 330, rowH = list.length > 5 ? 92 : 180, big = rowH > 120;
   const hex = c => /^[0-9a-f]{6}$/i.test(String(c || "")) ? `#${c}` : "";
@@ -1756,6 +1756,14 @@ async function teamHTML(name) {
 }
 
 // ---------- Stats : All Time (carrière et grosses perfs), Comparateur ----------
+// Périmètre des tops : NBA entière, conférence Est ou Ouest (conférence lue dans le classement)
+const SCOPES = [["all", "Général"], ["E", "Conf. Est"], ["O", "Conf. Ouest"]];
+function scopeLabel() {
+  return {all: "NBA entière", E: "Conférence Est", O: "Conférence Ouest"}[state.statsConf] || "NBA entière";
+}
+function inScope(r) {
+  return state.statsConf === "all" || RANKS.get(r.team)?.conf === state.statsConf;
+}
 // Bouton « Visuel » : image 1080 × 1350 prête à publier (Instagram, stories)
 function visBtn(kind) {
   return `<button class="vis" data-visual="${esc(kind)}">Visuel</button>`;
@@ -1782,6 +1790,8 @@ async function seasonStatsHTML() {
   const nav = `<div class="nav">${PERIODS.map(([k, l]) =>
     `<button data-stat="${k}" class="${k === per ? "on" : ""}">${l}</button>`).join("")}</div>`;
   const views = statsViewsHTML();
+  const scopeNav = `<div class="nav">${SCOPES.map(([k, l]) =>
+    `<button data-conf="${k}" class="${k === state.statsConf ? "on" : ""}">${l}</button>`).join("")}</div>`;
 
   if (!data.rows.length) {
     return `${nav}<section class="card"><p class="empty">${esc(noDataText())}</p></section>`;
@@ -1791,7 +1801,7 @@ async function seasonStatsHTML() {
   if (!state.statsKey || !keys.includes(state.statsKey)) state.statsKey = keys[0];
   const select = `<select class="filter" id="statsKey">${keys.map(k =>
     `<option value="${esc(k)}"${k === state.statsKey ? " selected" : ""}>${esc(periodLabel(per, k))}</option>`).join("")}</select>`;
-  const subset = data.rows.filter(r => periodKeyOf(per, r.day) === state.statsKey);
+  const subset = data.rows.filter(r => periodKeyOf(per, r.day) === state.statsKey && inScope(r));
   const minGames = per === "mois" || per === "saison" ? 3 : 1;
   const minText = minGames === 3 ? "moyenne par match, 3 matchs minimum" : "moyenne par match, 1 match minimum";
 
@@ -1827,7 +1837,7 @@ async function seasonStatsHTML() {
       : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
   }
 
-  return `${nav}<section class="card" style="margin-bottom:0"><p class="meta">${esc(GAMES?.season || "")} · ${phaseLabel()}</p>${select}${views}</section>${body}`;
+  return `${nav}${scopeNav}<section class="card" style="margin-bottom:0"><p class="meta">${esc(GAMES?.season || "")} · ${phaseLabel()}</p>${select}${views}</section>${body}`;
 }
 
 
@@ -2056,6 +2066,8 @@ appEl.addEventListener("click", e => {
   if (hb) { state.homePeriod = hb.dataset.home; render({silent: true}); return; }
   const sp = e.target.closest("button[data-stat]");
   if (sp) { state.statsPeriod = sp.dataset.stat; state.statsKey = ""; render({silent: true}); return; }
+  const scb = e.target.closest("button[data-conf]");
+  if (scb) { state.statsConf = scb.dataset.conf; render({silent: true}); return; }
   const cadd = e.target.closest("button[data-cmpadd]");
   if (cadd && state.cmp.length < CMP_MAX) { state.cmp.push({ season: CURRENT_SEASON, phase: "regular", player: "" }); render({silent: true}); return; }
   const cdel = e.target.closest("button[data-cmpdel]");
