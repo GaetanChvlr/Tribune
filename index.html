@@ -185,6 +185,9 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 .fc-v{font-size:11px;fill:var(--text)}
 .fc-l{font-size:10px;fill:var(--muted)}
 .cmpcol select,.cmpcol input{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--muted);background:var(--card);color:var(--text);font:inherit;box-sizing:border-box}
+.wp{display:flex;height:22px;border-radius:6px;overflow:hidden;margin:4px auto 2px;max-width:320px;font:700 12px/22px system-ui,sans-serif}
+.wp span{display:block;text-align:center;white-space:nowrap;overflow:hidden;min-width:0;color:#fff}
+.wpc{text-align:center;font-size:11px;color:var(--muted);margin:0 0 6px}
 </style>
 </head>
 <body>
@@ -197,7 +200,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.84</div>
+<div class="ver">v1.85</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1291,6 +1294,60 @@ function textColor(hex) {
   return b < 0.3 || b > 0.9 ? "var(--text)" : `#${hex.replace("#", "")}`;
 }
 
+// Prédiction de victoire (à venir) : écart = (marge moy. 10 derniers matchs A − B)
+// + 0,4 × (rang B − rang A) + 3,5 pour l'équipe à domicile (1re citée) ; P(A) = Φ(écart / 28).
+// Paramètres réglés sur 2024-25 et testés sur 2025-26 (hors échantillon).
+const WP = {sigma: 28, lambda: 0.4, home: 3.5, last: 10};
+function phiCdf(x) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const d = 0.3989423 * Math.exp(-x * x / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return x > 0 ? 1 - p : p;
+}
+// rows : données de la saison (jour, équipe, match, scores). day : date du match (AAAA-MM-JJ)
+function winProbOf(rows, teamA, teamB, day) {
+  const games = new Map();
+  for (const r of rows) {
+    if (r.phase !== "regular" || !r.day || r.day >= day) continue;
+    const k = r.event + "|" + r.team;
+    if (!games.has(k)) games.set(k, {team: r.team, day: r.day, m: r.ts - r.os, w: r.ts > r.os});
+  }
+  const hist = {};
+  for (const g of games.values()) (hist[g.team] ??= []).push(g);
+  for (const t in hist) hist[t].sort((x, y) => (x.day < y.day ? -1 : x.day > y.day ? 1 : 0));
+  const table = Object.keys(hist).map(t => {
+    const w = hist[t].filter(g => g.w).length;
+    return {t, w, p: w / hist[t].length};
+  }).sort((x, y) => y.p - x.p || y.w - x.w);
+  const rank = t => { const i = table.findIndex(x => x.t === t); return i < 0 ? 15.5 : i + 1; };
+  const m10 = t => {
+    const h = hist[t];
+    if (!h || !h.length) return null;
+    const l = h.slice(-WP.last);
+    return l.reduce((s, g) => s + g.m, 0) / l.length;
+  };
+  const mA = m10(teamA), mB = m10(teamB);
+  if (mA === null || mB === null) return null;
+  const D = (mA - mB) + WP.lambda * (rank(teamB) - rank(teamA)) + WP.home;
+  const pA = phiCdf(D / WP.sigma);
+  return {a: pA, b: 1 - pA};
+}
+async function winProbFor(a, b, isoDate) {
+  try {
+    const day = new Date(isoDate).toLocaleDateString("en-CA", {timeZone: "America/New_York"});
+    const raw = await loadSeason(CURRENT_SEASON);
+    return winProbOf(raw.rows, a, b, day);
+  } catch (e) { return null; }
+}
+function winBarHTML(wp, nameA, nameB, colA, colB) {
+  const pa = Math.round(wp.a * 100), pb = 100 - pa;
+  const cA = String(colA || "555").replace("#", ""), cB = String(colB || "888").replace("#", "");
+  return `<div class="wp" role="img" aria-label="${esc(nameA)} ${pa} %, ${esc(nameB)} ${pb} %">` +
+    `<span style="width:${pa}%;background:#${cA};color:${textColor(cA) || "#fff"}">${pa}%</span>` +
+    `<span style="width:${pb}%;background:#${cB};color:${textColor(cB) || "#fff"}">${pb}%</span></div>` +
+    `<p class="wpc">Prédiction de victoire</p>`;
+}
+
 // Détail d'un match : score, quart-temps, tous les joueurs
 // Football : score, puis buts et cartons avec la minute
 async function footDetailHTML(id, league) {
@@ -1362,12 +1419,20 @@ async function detailHTML(id, league) {
   const aWin = Number.isFinite(aFinal) && Number.isFinite(bFinal) && aFinal > bFinal;
   const bWin = Number.isFinite(aFinal) && Number.isFinite(bFinal) && bFinal > aFinal;
 
+  // Barre de probabilité : uniquement pour un match à venir (a = équipe à domicile, 1re citée)
+  let wpBar = "";
+  if (st.state === "pre" && comps.length === 2 && a.team?.displayName && b.team?.displayName) {
+    const wp = await winProbFor(a.team.displayName, b.team.displayName, comp.date || j.header?.date);
+    if (wp) wpBar = winBarHTML(wp, shortName(a), shortName(b), colorOf(a.team), colorOf(b.team));
+  }
+
   const head = comps.length === 2
     ? `<div class="row">
          <div class="side">${logo(a)}</div>
          <div class="mid"><b class="big">${esc(a.score)} - ${esc(b.score)}</b></div>
          <div class="side">${logo(b)}</div>
        </div>
+       ${wpBar}
        <div class="row">
          ${teamCell(a.team?.displayName || "", aWin, `color:${textColor(colorOf(a.team))}`)}
          <div class="mid"></div>
