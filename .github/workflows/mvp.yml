@@ -2,9 +2,9 @@ name: Calcul des données Tribune
 
 on:
   schedule:
-    # GitHub ne prend que l'heure UTC : deux créneaux, et seul celui qui tombe sur 7h à Paris exécute le job
-    - cron: "23 5 * * *"   # 7h à Paris en heure d'été (UTC+2) ; minute décalée : les créneaux pile sont souvent sautés
-    - cron: "23 6 * * *"   # 7h à Paris en heure d'hiver (UTC+1)
+    # GitHub ne prend que l'heure UTC : deux créneaux, et seul celui qui tombe sur 8h29 à Paris exécute le job
+    - cron: "29 6 * * *"   # 8h29 à Paris en heure d'été (UTC+2)
+    - cron: "29 7 * * *"   # 8h29 à Paris en heure d'hiver (UTC+1)
   workflow_dispatch:        # lancement manuel possible depuis l'onglet Actions
 
 permissions:
@@ -17,7 +17,7 @@ jobs:
       - name: Vérifier l'heure de Paris
         id: tz
         run: |
-          if [ "${{ github.event_name }}" != "schedule" ] || [ "$(TZ=Europe/Paris date +%H)" = "07" ]; then
+          if [ "${{ github.event_name }}" != "schedule" ] || [ "$(TZ=Europe/Paris date +%H)" = "08" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
