@@ -20,7 +20,8 @@ const TZ = "America/New_York";
 const ALLSTAR_RE = /all-?stars?|team stars|team stripes|^world\b/i;
 
 const COLUMNS = ["jour", "joueur", "equipe", "equipe_court", "adversaire", "score_equipe", "score_adversaire",
-  "pts", "reb", "ast", "stl", "blk", "tpm", "gmsc", "couleur", "couleur_alt", "phase", "match", "logo", "domicile"];
+  "pts", "reb", "ast", "stl", "blk", "tpm", "gmsc", "couleur", "couleur_alt", "phase", "match", "logo", "domicile",
+  "dreb", "oreb", "min", "pm"];
 
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
 const usDay = date => dayFmt.format(date); // "AAAA-MM-JJ"
@@ -120,7 +121,12 @@ async function rowsOfEvent(id, dayKey, phase) {
         id,
         team.team?.logo ?? me?.team?.logo ?? "",
         // 1 si cette équipe est la première citée dans l'affiche (équipe à domicile), 0 sinon
-        comps[0]?.team?.id === tid ? 1 : 0
+        comps[0]?.team?.id === tid ? 1 : 0,
+        // rebonds défensifs, offensifs, minutes et +/- (pour le DPOY, le temps de jeu)
+        num(st("DREB")),
+        num(st("OREB")),
+        num(st("MIN")),
+        num(st("+/-"))
       ]);
     }
   }
