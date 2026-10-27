@@ -182,6 +182,8 @@ table.cmp{font-size:15px}
 table.cmp th{font-size:13px;color:var(--text);font-weight:600;white-space:normal;line-height:1.25;padding:8px 4px}
 table.cmp td{padding:9px 4px}
 table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
+.fc-v{font-size:11px;fill:var(--text)}
+.fc-l{font-size:10px;fill:var(--muted)}
 .cmpcol select,.cmpcol input{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--muted);background:var(--card);color:var(--text);font:inherit;box-sizing:border-box}
 </style>
 </head>
@@ -195,7 +197,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.83</div>
+<div class="ver">v1.84</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -232,7 +234,7 @@ const STANDINGS_TTL = 3 * 60 * 60 * 1000;
 const state = {
   league: "NBA", tab: "home", detail: null, teamFilter: "",
   screen: "app", homePeriod: "saison", calTeamFilter: "", matchView: "cal", raceId: null,
-  statsView: "leaders", atView: "carriere", statsPeriod: "nuit", statsKey: "", calWeek: null, resWeek: null, profile: null, season: "2026-27", phase: "regular", cmp: { a: { season: "2026-27", phase: "regular", player: "" }, b: { season: "2025-26", phase: "regular", player: "" } }
+  statsView: "leaders", atView: "carriere", statsPeriod: "nuit", statsKey: "", calWeek: null, resWeek: null, profile: null, season: "2026-27", phase: "regular", cmp: [{ season: "2026-27", phase: "regular", player: "" }, { season: "2025-26", phase: "regular", player: "" }]
 };
 let favs = loadFavs();           // équipes par championnat
 let players = loadPlayers();     // joueurs favoris
@@ -1491,6 +1493,25 @@ async function rosterOf(teamName) {
   }
   return rosterById.get(id);
 }
+// Graphique des Game Score des 5 derniers matchs (rows déjà triés du plus récent au plus ancien)
+function formChartHTML(rows) {
+  const last = rows.slice(0, 5).reverse();
+  if (!last.length) return "";
+  const W = 320, H = 150, pad = 24, base = H - 26;
+  const vals = last.map(r => r.gs);
+  const max = Math.max(10, ...vals), min = Math.min(0, ...vals), range = max - min || 1;
+  const y = v => base - ((v - min) / range) * (base - 18);
+  const zero = y(0), bw = (W - 2 * pad) / last.length;
+  const bars = last.map((r, i) => {
+    const x = pad + i * bw + bw * 0.2, w = bw * 0.6, yv = y(r.gs);
+    const top = Math.min(yv, zero), h = Math.max(Math.abs(yv - zero), 1);
+    return `<rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="3" style="fill:var(--accent)"/>`
+      + `<text x="${(x + w / 2).toFixed(1)}" y="${(top - 4).toFixed(1)}" text-anchor="middle" class="fc-v">${esc(f1(r.gs))}</text>`
+      + `<text x="${(x + w / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle" class="fc-l">${esc(ab(r.opp))}</text>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Game Score des 5 derniers matchs">`
+    + `<line x1="${pad}" x2="${W - pad}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" style="stroke:var(--muted)" stroke-width="1"/>${bars}</svg>`;
+}
 function statCell(label, text) {
   return `<div class="pst"><b>${text}</b><span>${esc(label)}</span></div>`;
 }
@@ -1517,6 +1538,9 @@ async function playerHTML(name) {
     <h2 class="ph">${pdot(last.pc, last.pa)}${esc(name)}</h2>
     <p class="meta"><a class="lnk" data-team="${esc(last.team)}">${esc(last.team)}</a>${pos ? ` · ${esc(pos)}` : ""}${GAMES?.season ? ` · ${esc(GAMES.season)} · ${phaseLabel()}` : ""}</p>
     ${grid}
+    <h3 class="sub-h">Forme récente</h3>
+    ${formChartHTML(rows)}
+    <p class="meta">Game Score des ${Math.min(5, rows.length)} derniers matchs, du plus ancien au plus récent</p>
     <h3 class="sub-h">Meilleures performances</h3>
     <ul class="plist">${best}</ul>
     <h3 class="sub-h">Matchs de la saison</h3>
@@ -1725,39 +1749,46 @@ async function perfsHTML() {
   return `<p class="meta">Meilleure performance d'un seul match, ${phaseLabel().toLowerCase()}, de 1993-94 à aujourd'hui</p>` + body;
 }
 
-// Comparateur : deux joueurs, chacun avec sa saison et sa phase
+// Comparateur : de 2 à 4 joueurs, chacun avec sa saison et sa phase
 const CMP_STATS = [["Matchs", "games"], ["Points", "pts"], ["Rebonds", "reb"], ["Passes", "ast"], ["Interceptions", "stl"], ["Contres", "blk"], ["3 pts", "tpm"], ["Game Score", "gs"]];
-async function cmpSide(k) {
-  const x = state.cmp[k];
+const CMP_MAX = 4;
+async function cmpSide(i) {
+  const x = state.cmp[i];
   let names = [], rows = [];
   try {
     rows = (await loadSeason(x.season)).rows.filter(r => r.phase === x.phase);
     names = [...new Set(rows.map(r => r.name))].sort((p, q) => p.localeCompare(q, "fr"));
   } catch (e) {}
   const mine = rows.filter(r => r.name === x.player);
-  return { k, x, names, av: mine.length ? averages(mine, 1)[0] : null };
+  return { i, x, names, av: mine.length ? averages(mine, 1)[0] : null };
 }
-function cmpForm(k, x, names) {
-  const seasonSel = `<select class="filter" data-cmp="${k}" data-cmpf="season">${SEASONS.map(s =>
+function cmpForm(i, x, names) {
+  const seasonSel = `<select class="filter" data-cmp="${i}" data-cmpf="season">${SEASONS.map(s =>
     `<option value="${s}"${s === x.season ? " selected" : ""}>${s}</option>`).join("")}</select>`;
-  const phaseSel = `<select class="filter" data-cmp="${k}" data-cmpf="phase"><option value="regular"${x.phase === "regular" ? " selected" : ""}>Saison régulière</option><option value="playoffs"${x.phase === "playoffs" ? " selected" : ""}>Playoffs</option></select>`;
-  const input = `<input list="cmpList-${k}" data-cmp="${k}" data-cmpf="player" value="${esc(x.player)}" placeholder="Nom du joueur" autocomplete="off"><datalist id="cmpList-${k}">${names.map(n => `<option value="${esc(n)}"></option>`).join("")}</datalist>`;
-  return `<div class="cmpcol">${seasonSel}${phaseSel}${input}</div>`;
+  const phaseSel = `<select class="filter" data-cmp="${i}" data-cmpf="phase"><option value="regular"${x.phase === "regular" ? " selected" : ""}>Saison régulière</option><option value="playoffs"${x.phase === "playoffs" ? " selected" : ""}>Playoffs</option></select>`;
+  const input = `<input list="cmpList-${i}" data-cmp="${i}" data-cmpf="player" value="${esc(x.player)}" placeholder="Nom du joueur" autocomplete="off"><datalist id="cmpList-${i}">${names.map(n => `<option value="${esc(n)}"></option>`).join("")}</datalist>`;
+  const del = state.cmp.length > 2 ? `<button class="back" data-cmpdel="${i}">Retirer</button>` : "";
+  return `<div class="cmpcol">${seasonSel}${phaseSel}${input}${del}</div>`;
 }
 async function compareHTML() {
-  const [A, B] = await Promise.all([cmpSide("a"), cmpSide("b")]);
+  const sides = await Promise.all(state.cmp.map((_, i) => cmpSide(i)));
   const fmt = (key, v) => v === null || v === undefined ? "–" : key === "games" ? String(v) : f1(v);
   const val = (S, key) => !S.av ? null : key === "games" ? S.av.games : S.av.avg[key];
   const rows = CMP_STATS.map(([label, key]) => {
-    const va = val(A, key), vb = val(B, key);
-    const hiA = va !== null && vb !== null && va > vb, hiB = va !== null && vb !== null && vb > va;
-    return `<tr><td>${label}</td><td class="${hiA ? "win" : ""}">${fmt(key, va)}</td><td class="${hiB ? "win" : ""}">${fmt(key, vb)}</td></tr>`;
+    const vals = sides.map(S => val(S, key));
+    const known = vals.filter(v => v !== null);
+    const best = known.length > 1 ? Math.max(...known) : null;
+    const cells = vals.map(v => `<td class="${best !== null && v === best ? "win" : ""}">${fmt(key, v)}</td>`).join("");
+    return `<tr><td>${label}</td>${cells}</tr>`;
   }).join("");
   const head = S => S.av ? `${pdot(S.av.pc, S.av.pa)}${esc(S.x.player)}` : '<span class="meta">Choisir</span>';
+  const add = sides.length < CMP_MAX ? `<button class="back" data-cmpadd="1">+ Ajouter un joueur</button>` : "";
+  const cols = sides.length === 2 ? "1fr 1fr" : "1fr 1fr";
   return `<section class="card"><h2>Comparateur</h2>
-    <div class="cmpgrid">${cmpForm("a", A.x, A.names)}${cmpForm("b", B.x, B.names)}</div>
-    <table class="tbl cmp"><tr><th></th><th>${head(A)}</th><th>${head(B)}</th></tr>${rows}</table>
-    ${(!A.av || !B.av) ? '<p class="meta">Choisissez un joueur pour chaque côté. Les saisons peuvent être différentes.</p>' : ""}
+    <div class="cmpgrid" style="grid-template-columns:${cols}">${sides.map(S => cmpForm(S.i, S.x, S.names)).join("")}</div>
+    ${add}
+    <table class="tbl cmp"><tr><th></th>${sides.map(S => `<th>${head(S)}</th>`).join("")}</tr>${rows}</table>
+    ${sides.some(S => !S.av) ? '<p class="meta">Choisissez un joueur pour chaque case. Les saisons peuvent être différentes.</p>' : ""}
   </section>`;
 }
 
@@ -1877,6 +1908,10 @@ appEl.addEventListener("click", e => {
   if (hb) { state.homePeriod = hb.dataset.home; render({silent: true}); return; }
   const sp = e.target.closest("button[data-stat]");
   if (sp) { state.statsPeriod = sp.dataset.stat; state.statsKey = ""; render({silent: true}); return; }
+  const cadd = e.target.closest("button[data-cmpadd]");
+  if (cadd && state.cmp.length < CMP_MAX) { state.cmp.push({ season: CURRENT_SEASON, phase: "regular", player: "" }); render({silent: true}); return; }
+  const cdel = e.target.closest("button[data-cmpdel]");
+  if (cdel && state.cmp.length > 2) { state.cmp.splice(+cdel.dataset.cmpdel, 1); render({silent: true}); return; }
   const atb = e.target.closest("button[data-atv]");
   if (atb) { state.atView = atb.dataset.atv; render({silent: true}); return; }
   const sv = e.target.closest("button[data-sview]");
@@ -1915,7 +1950,7 @@ appEl.addEventListener("submit", e => {
 });
 appEl.addEventListener("change", e => {
   const cf = e.target.dataset && e.target.dataset.cmpf;
-  if (cf) { state.cmp[e.target.dataset.cmp][cf] = e.target.value; render({silent: true}); return; }
+  if (cf) { state.cmp[+e.target.dataset.cmp][cf] = e.target.value; render({silent: true}); return; }
   if (e.target.id === "teamFilter") {
     state.teamFilter = e.target.value;
     render({silent: true});
