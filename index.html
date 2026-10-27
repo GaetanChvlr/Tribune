@@ -189,6 +189,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 .wp span{display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden;min-width:0}
 .wp i{font-style:normal;color:#fff;background:rgba(0,0,0,.75);padding:0 7px;border-radius:5px;line-height:18px}
 .wpc{text-align:center;font-size:11px;color:var(--muted);margin:0 0 6px}
+.vis{font:600 12px system-ui,sans-serif;padding:3px 10px;margin-left:8px;border-radius:999px;border:1px solid var(--muted);background:transparent;color:var(--text);vertical-align:middle}
 </style>
 </head>
 <body>
@@ -201,7 +202,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.88</div>
+<div class="ver">v1.89</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1179,7 +1180,9 @@ async function visualBlob(kind) {
 // Partage de l'image (feuille de partage sur iPhone), sinon téléchargement
 async function shareVisual(kind) {
   const blob = await visualBlob(kind);
-  const name = `tribune-${kind}.png`;
+  return shareBlob(blob, `tribune-${kind}.png`);
+}
+async function shareBlob(blob, name) {
   const file = new File([blob], name, { type: "image/png" });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file], title: "Tribune" }); return; }
@@ -1345,11 +1348,71 @@ function wpSegHTML(pct, pair) {
   const p = String(pair.p || "555").replace("#", ""), s = String(pair.s || p).replace("#", "");
   return `<span style="width:${pct}%;background:linear-gradient(#${p} 50%,#${s} 50%)"><i>${pct}%</i></span>`;
 }
-function winBarHTML(wp, nameA, nameB, pairA, pairB) {
+function winBarHTML(wp, nameA, nameB, pairA, pairB, matchId) {
   const pa = Math.round(wp.a * 100), pb = 100 - pa;
   return `<div class="wp" role="img" aria-label="${esc(nameA)} ${pa} %, ${esc(nameB)} ${pb} %">` +
     wpSegHTML(pa, pairA) + wpSegHTML(pb, pairB) + `</div>` +
-    `<p class="wpc">Prédiction de victoire</p>`;
+    `<p class="wpc">Prédiction de victoire<button class="vis" data-matchvis="${esc(matchId)}">Visuel</button></p>`;
+}
+// Données des visuels de match, par identifiant de match (remplies à l'ouverture de la fiche)
+const MATCH_VIZ = {};
+function matchVisualBlob(v) {
+  const W = 1080, H = 1350;
+  const F = `system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif`;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#0a0a0a"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#a1a1aa"; ctx.font = `600 36px ${F}`;
+  ctx.fillText("TRIBUNE · NBA", 80, 110);
+  ctx.fillStyle = "#fafafa"; ctx.font = `800 84px ${F}`;
+  ctx.fillText("Prédiction du match", 80, 230);
+  ctx.fillStyle = "#a1a1aa"; ctx.font = `500 38px ${F}`;
+  ctx.fillText(fitText(ctx, v.when, W - 160), 80, 300);
+
+  const hex = c => /^[0-9a-f]{6}$/i.test(String(c || "")) ? c : "555555";
+  const teams = [
+    {name: v.a.name, pair: v.a.pair, pct: v.pctA, home: true},
+    {name: v.b.name, pair: v.b.pair, pct: v.pctB, home: false}
+  ];
+  teams.forEach((t, i) => {
+    const y0 = 400 + i * 300, cy = y0 + 60, r = 50;
+    const p1 = "#" + hex(t.pair.p), p2 = "#" + hex(t.pair.s || t.pair.p);
+    ctx.save(); ctx.beginPath(); ctx.arc(140, cy, r, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = p1; ctx.fillRect(140 - r, cy - r, 2 * r, r);
+    ctx.fillStyle = p2; ctx.fillRect(140 - r, cy, 2 * r, r);
+    ctx.restore();
+    ctx.fillStyle = "#fafafa"; ctx.font = `700 60px ${F}`;
+    ctx.fillText(fitText(ctx, t.name, W - 220 - 300), 220, cy + 20);
+    ctx.fillStyle = "#a1a1aa"; ctx.font = `500 30px ${F}`;
+    ctx.fillText(t.home ? "Domicile" : "Extérieur", 220, cy + 70);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#fafafa"; ctx.font = `800 130px ${F}`;
+    ctx.fillText(`${t.pct}%`, W - 80, y0 + 150);
+    ctx.textAlign = "left";
+  });
+
+  // Barre de probabilité aux deux couleurs de chaque équipe
+  const bx = 80, bw = W - 160, by = 1000, bh = 110;
+  let x = bx;
+  teams.forEach(t => {
+    const w = bw * t.pct / 100;
+    const p1 = "#" + hex(t.pair.p), p2 = "#" + hex(t.pair.s || t.pair.p);
+    ctx.fillStyle = p1; ctx.fillRect(x, by, w, bh / 2);
+    ctx.fillStyle = p2; ctx.fillRect(x, by + bh / 2, w, bh / 2);
+    ctx.fillStyle = "#fff"; ctx.font = `800 44px ${F}`; ctx.textAlign = "center";
+    ctx.lineWidth = 6; ctx.strokeStyle = "rgba(0,0,0,.75)";
+    ctx.strokeText(`${t.pct}%`, x + w / 2, by + bh / 2 + 16);
+    ctx.fillText(`${t.pct}%`, x + w / 2, by + bh / 2 + 16);
+    ctx.textAlign = "left";
+    x += w;
+  });
+
+  ctx.fillStyle = "#71717a"; ctx.font = `500 30px ${F}`;
+  ctx.fillText("Estimation statistique, pas une certitude", 80, H - 110);
+  ctx.fillText("Moyenne des 10 derniers matchs, classement, domicile · données ESPN", 80, H - 70);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(b => b ? resolve(b) : reject(new Error("Image impossible à créer")), "image/png"));
 }
 
 // Détail d'un match : score, quart-temps, tous les joueurs
@@ -1427,7 +1490,15 @@ async function detailHTML(id, league) {
   let wpBar = "";
   if (st.state === "pre" && comps.length === 2 && a.team?.displayName && b.team?.displayName) {
     const wp = await winProbFor(a.team.displayName, b.team.displayName, comp.date || j.header?.date);
-    if (wp) wpBar = winBarHTML(wp, shortName(a), shortName(b), pairOf(a.team), pairOf(b.team));
+    if (wp) {
+      wpBar = winBarHTML(wp, shortName(a), shortName(b), pairOf(a.team), pairOf(b.team), id);
+      const pct = Math.round(wp.a * 100);
+      MATCH_VIZ[id] = {
+        when: new Date(comp.date || j.header?.date).toLocaleString("fr-FR", {weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit"}),
+        a: {name: a.team.displayName, pair: pairOf(a.team)}, b: {name: b.team.displayName, pair: pairOf(b.team)},
+        pctA: pct, pctB: 100 - pct
+      };
+    }
   }
 
   const head = comps.length === 2
@@ -1685,6 +1756,10 @@ async function teamHTML(name) {
 }
 
 // ---------- Stats : All Time (carrière et grosses perfs), Comparateur ----------
+// Bouton « Visuel » : image 1080 × 1350 prête à publier (Instagram, stories)
+function visBtn(kind) {
+  return `<button class="vis" data-visual="${esc(kind)}">Visuel</button>`;
+}
 function statsViewsHTML() {
   return `<div class="sview">${[["leaders", "Leaders"], ["perfs", "Grosses perfs"], ["mvp", "MVP"], ["alltime", "All Time"], ["compare", "Comparateur"]]
     .map(([k, l]) => `<button data-sview="${k}" class="${k === state.statsView ? "on" : ""}">${l}</button>`).join("")}</div>`;
@@ -1727,7 +1802,7 @@ async function seasonStatsHTML() {
       const list = [...avgs].sort((a, b) => b.avg[c.key] - a.avg[c.key]).slice(0, 5);
       const rows = list.map((p, i) =>
         `<tr><td>${i + 1}. ${pdot(p.pc, p.pa)}<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.teamShort))}</a></td><td><b>${esc(f1(p.avg[c.key]))}</b></td><td>${p.games}</td></tr>`).join("");
-      return `<section class="card"><h2>${esc(c.label)}</h2>${list.length
+      return `<section class="card"><h2>${esc(c.label)}${visBtn(c.key)}</h2>${list.length
         ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>Moy.</th><th>Matchs</th></tr>${rows}</table>`
         : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
     }).join("");
@@ -1747,7 +1822,7 @@ async function seasonStatsHTML() {
     const list = [...avgs].sort((a, b) => b.avg.gs - a.avg.gs).slice(0, 10);
     const rows = list.map((p, i) =>
       `<tr><td>${i + 1}. ${pdot(p.pc, p.pa)}<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.teamShort))}</a></td><td><b>${esc(f1(p.avg.gs))}</b></td><td>${p.games}</td></tr>`).join("");
-    body = `<section class="card"><h2>Top 10 MVP</h2><p class="meta">Game Score moyen · ${minText}</p>${list.length
+    body = `<section class="card"><h2>Top 10 MVP${visBtn("mvp")}</h2><p class="meta">Game Score moyen · ${minText}</p>${list.length
       ? `<table class="tbl"><tr><th>Joueur</th><th>Équipe</th><th>GmSc</th><th>Matchs</th></tr>${rows}</table>`
       : '<p class="empty">Aucun joueur qualifié.</p>'}</section>`;
   }
@@ -1971,6 +2046,10 @@ appEl.addEventListener("click", e => {
   const rr = e.target.closest("[data-race]");
   if (rr) { state.raceId = rr.dataset.race; render(); return; }
   if (e.target.closest("[data-rback]")) { state.raceId = null; render(); return; }
+  const vz = e.target.closest("button[data-visual]");
+  if (vz) { shareVisual(vz.dataset.visual).catch(() => {}); return; }
+  const mz = e.target.closest("button[data-matchvis]");
+  if (mz) { const v = MATCH_VIZ[mz.dataset.matchvis]; if (v) matchVisualBlob(v).then(b => shareBlob(b, "tribune-match.png")).catch(() => {}); return; }
   const mv = e.target.closest("button[data-mview]");
   if (mv) { state.matchView = mv.dataset.mview; state.raceId = null; render({silent: true}); return; }
   const hb = e.target.closest("button[data-home]");
