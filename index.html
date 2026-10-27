@@ -202,7 +202,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.91</div>
+<div class="ver">v1.92</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1757,12 +1757,28 @@ async function teamHTML(name) {
 
 // ---------- Stats : All Time (carrière et grosses perfs), Comparateur ----------
 // Périmètre des tops : NBA entière, conférence Est ou Ouest (conférence lue dans le classement)
+// Divisions NBA (noms ESPN des équipes)
+const DIVISIONS = {
+  "Atlantique": ["Boston Celtics", "Brooklyn Nets", "New York Knicks", "Philadelphia 76ers", "Toronto Raptors"],
+  "Central": ["Chicago Bulls", "Cleveland Cavaliers", "Detroit Pistons", "Indiana Pacers", "Milwaukee Bucks"],
+  "Sud-Est": ["Atlanta Hawks", "Charlotte Hornets", "Miami Heat", "Orlando Magic", "Washington Wizards"],
+  "Nord-Ouest": ["Denver Nuggets", "Minnesota Timberwolves", "Oklahoma City Thunder", "Portland Trail Blazers", "Utah Jazz"],
+  "Pacifique": ["Golden State Warriors", "LA Clippers", "Los Angeles Lakers", "Phoenix Suns", "Sacramento Kings"],
+  "Sud-Ouest": ["Dallas Mavericks", "Houston Rockets", "Memphis Grizzlies", "New Orleans Pelicans", "San Antonio Spurs"]
+};
+const DIV_OF = Object.fromEntries(Object.entries(DIVISIONS).flatMap(([d, teams]) => teams.map(t => [t, d])));
+// Périmètre des tops : NBA entière, conférence (lue dans le classement) ou division
 const SCOPES = [["all", "Général"], ["E", "Conf. Est"], ["O", "Conf. Ouest"]];
 function scopeLabel() {
-  return {all: "NBA entière", E: "Conférence Est", O: "Conférence Ouest"}[state.statsConf] || "NBA entière";
+  const s = state.statsConf;
+  if (s.startsWith("D:")) return "Division " + s.slice(2);
+  return {all: "NBA entière", E: "Conférence Est", O: "Conférence Ouest"}[s] || "NBA entière";
 }
 function inScope(r) {
-  return state.statsConf === "all" || RANKS.get(r.team)?.conf === state.statsConf;
+  const s = state.statsConf;
+  if (s === "all") return true;
+  if (s.startsWith("D:")) return DIV_OF[r.team] === s.slice(2);
+  return RANKS.get(r.team)?.conf === s;
 }
 function statsViewsHTML() {
   return `<div class="sview">${[["leaders", "Leaders"], ["perfs", "Grosses perfs"], ["mvp", "MVP"], ["alltime", "All Time"], ["compare", "Comparateur"]]
@@ -1786,8 +1802,9 @@ async function seasonStatsHTML() {
   const nav = `<div class="nav">${PERIODS.map(([k, l]) =>
     `<button data-stat="${k}" class="${k === per ? "on" : ""}">${l}</button>`).join("")}</div>`;
   const views = statsViewsHTML();
-  const scopeSelect = `<select class="filter" id="statsConf">${SCOPES.map(([k, l]) =>
-    `<option value="${k}"${k === state.statsConf ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+  const opt = (k, l) => `<option value="${k}"${k === state.statsConf ? " selected" : ""}>${l}</option>`;
+  const scopeSelect = `<select class="filter" id="statsConf">${SCOPES.map(([k, l]) => opt(k, l)).join("")}` +
+    `<optgroup label="Divisions">${Object.keys(DIVISIONS).map(d => opt("D:" + d, d)).join("")}</optgroup></select>`;
 
   if (!data.rows.length) {
     return `${nav}<section class="card"><p class="empty">${esc(noDataText())}</p></section>`;
