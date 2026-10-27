@@ -202,7 +202,7 @@ table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.93</div>
+<div class="ver">v1.94</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -232,6 +232,9 @@ const CATS = [
   {key: "tpm", label: "3 points réussis"}
 ];
 
+// Leaders et grosses perfs : rebonds défensifs et offensifs juste après le total des rebonds
+const REB_SPLIT = [{key: "dreb", label: "Rebonds défensifs"}, {key: "oreb", label: "Rebonds offensifs"}];
+const LEADER_CATS = [CATS[0], CATS[1], ...REB_SPLIT, ...CATS.slice(2)];
 const REFRESH_LIVE = 60 * 1000;            // match en cours
 const REFRESH_IDLE = 3 * 60 * 60 * 1000;   // le reste
 const STANDINGS_TTL = 3 * 60 * 60 * 1000;
@@ -664,7 +667,7 @@ async function readGamesFile(file) {
     tpm: a[idx.tpm], gs: a[idx.gmsc], pc: a[idx.couleur] || "", pa: a[idx.couleur_alt] || "",
     phase: a[idx.phase] || "regular", event: a[idx.match] || "", logo: a[idx.logo] || "",
     // DPOY : indice défensif par match = 2 × interceptions + 2 × contres + rebonds défensifs
-    dreb: a[idx.dreb] || 0, dpoy: 2 * (a[idx.stl] || 0) + 2 * (a[idx.blk] || 0) + (a[idx.dreb] || 0)
+    dreb: a[idx.dreb] || 0, oreb: a[idx.oreb] || 0, dpoy: 2 * (a[idx.stl] || 0) + 2 * (a[idx.blk] || 0) + (a[idx.dreb] || 0)
   }));
   // Logos des équipes (y compris les franchises disparues) : mémorisés pour toutes les pages
   for (const r of rows) if (r.team && r.logo && !TEAM_LOGOS[r.team]) TEAM_LOGOS[r.team] = r.logo;
@@ -739,12 +742,12 @@ function averages(rows, minGames) {
     if (!e) {
       e = { name: r.name, team: r.team, teamShort: r.teamShort, pc: r.pc, pa: r.pa, games: 0, sum: {} };
       CATS.forEach(c => e.sum[c.key] = 0);
-      e.sum.gs = 0; e.sum.dreb = 0; e.sum.dpoy = 0;
+      e.sum.gs = 0; e.sum.dreb = 0; e.sum.oreb = 0; e.sum.dpoy = 0;
       acc.set(k, e);
     }
     e.games++;
     CATS.forEach(c => e.sum[c.key] += r[c.key]);
-    e.sum.gs += r.gs; e.sum.dreb += r.dreb; e.sum.dpoy += r.dpoy;
+    e.sum.gs += r.gs; e.sum.dreb += r.dreb; e.sum.oreb += r.oreb; e.sum.dpoy += r.dpoy;
   }
   return [...acc.values()].filter(e => e.games >= minGames).map(e => {
     const avg = {};
@@ -1854,7 +1857,7 @@ async function seasonStatsHTML() {
   let body = "";
   if (state.statsView === "leaders") {
     const avgs = averages(subset, minGames);
-    body = CATS.map(c => {
+    body = LEADER_CATS.map(c => {
       const list = [...avgs].sort((a, b) => b.avg[c.key] - a.avg[c.key]).slice(0, 5);
       const rows = list.map((p, i) =>
         `<tr><td>${i + 1}. ${pdot(p.pc, p.pa)}<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a></td><td><a class="lnk" data-team="${esc(p.team)}">${esc(ab(p.teamShort))}</a></td><td><b>${esc(f1(p.avg[c.key]))}</b></td><td>${p.games}</td></tr>`).join("");
@@ -1864,7 +1867,7 @@ async function seasonStatsHTML() {
     }).join("");
     body = `<p class="meta">Top 5 par catégorie · ${minText}</p>` + body;
   } else if (state.statsView === "perfs") {
-    body = CATS.map(c => {
+    body = LEADER_CATS.map(c => {
       const list = [...subset].sort((a, b) => b[c.key] - a[c.key]).slice(0, 5);
       const rows = list.map((r, i) =>
         `<tr><td>${i + 1}. ${pdot(r.pc, r.pa)}<a class="lnk" data-player="${esc(r.name)}">${esc(r.name)}</a></td><td><b>${esc(r[c.key])}</b></td><td>${matchText(r)}</td></tr>`).join("");
