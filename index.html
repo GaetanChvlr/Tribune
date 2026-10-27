@@ -175,6 +175,13 @@ h2.ph{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 #leagues .seasonSel{padding:9px 14px;border-radius:999px;border:1px solid var(--muted);background:var(--card);color:var(--text);font:inherit;font-weight:600}
 table.tbl td.win{font-weight:700}
 .cmpcol{display:grid;gap:8px;margin:8px 0 12px}
+.cmpgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+.cmpgrid .cmpcol{margin:6px 0}
+.cmpgrid .cmpcol select,.cmpgrid .cmpcol input{font-size:14px;padding:9px 10px;min-width:0}
+table.cmp{font-size:15px}
+table.cmp th{font-size:13px;color:var(--text);font-weight:600;white-space:normal;line-height:1.25;padding:8px 4px}
+table.cmp td{padding:9px 4px}
+table.cmp td:first-child{font-size:13px;color:var(--muted);white-space:normal}
 .cmpcol select,.cmpcol input{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--muted);background:var(--card);color:var(--text);font:inherit;box-sizing:border-box}
 </style>
 </head>
@@ -188,7 +195,7 @@ table.tbl td.win{font-weight:700}
 <nav class="tabbar" id="tabs"></nav>
 
 <div id="app"></div>
-<div class="ver">v1.82</div>
+<div class="ver">v1.83</div>
 
 <script>
 // Sources : API publiques ESPN (non officielles). Peuvent changer sans préavis.
@@ -1748,8 +1755,8 @@ async function compareHTML() {
   }).join("");
   const head = S => S.av ? `${pdot(S.av.pc, S.av.pa)}${esc(S.x.player)}` : '<span class="meta">Choisir</span>';
   return `<section class="card"><h2>Comparateur</h2>
-    ${cmpForm("a", A.x, A.names)}${cmpForm("b", B.x, B.names)}
-    <table class="tbl"><tr><th></th><th>${head(A)}</th><th>${head(B)}</th></tr>${rows}</table>
+    <div class="cmpgrid">${cmpForm("a", A.x, A.names)}${cmpForm("b", B.x, B.names)}</div>
+    <table class="tbl cmp"><tr><th></th><th>${head(A)}</th><th>${head(B)}</th></tr>${rows}</table>
     ${(!A.av || !B.av) ? '<p class="meta">Choisissez un joueur pour chaque côté. Les saisons peuvent être différentes.</p>' : ""}
   </section>`;
 }
