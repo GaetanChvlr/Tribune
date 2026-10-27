@@ -3,8 +3,8 @@ name: Calcul des données Tribune
 on:
   schedule:
     # GitHub ne prend que l'heure UTC : deux créneaux, et seul celui qui tombe sur 7h à Paris exécute le job
-    - cron: "0 5 * * *"   # 7h à Paris en heure d'été (UTC+2)
-    - cron: "0 6 * * *"   # 7h à Paris en heure d'hiver (UTC+1)
+    - cron: "23 5 * * *"   # 7h à Paris en heure d'été (UTC+2) ; minute décalée : les créneaux pile sont souvent sautés
+    - cron: "23 6 * * *"   # 7h à Paris en heure d'hiver (UTC+1)
   workflow_dispatch:        # lancement manuel possible depuis l'onglet Actions
 
 permissions:
