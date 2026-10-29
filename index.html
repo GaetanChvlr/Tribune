@@ -1562,13 +1562,19 @@ async function detailHTML(id, league) {
     return 0;
   });
   const hex = c => String(c).replace("#", "");
+  // Un nom n'est cliquable que si le joueur a des données dans la saison et la phase affichées
+  let known = new Set();
+  if (found.length && league === "NBA") {
+    try { known = new Set((await loadGames()).rows.map(r => r.name)); } catch (e) {}
+  }
   const playerRows = found.map(p => {
     const bar = p.color
       ? `<span class="bar" style="background:linear-gradient(#${hex(p.color)} 50%,#${hex(p.alt || p.color)} 50%)"></span>`
       : "";
     const nameColor = p.color ? `color:${textColor(p.color)}` : "";
     const cells = cols.map(([k]) => `<td>${esc(p.get(k))}</td>`).join("");
-    return `<tr><td class="pn" style="${nameColor}">${bar}${esc(p.name)}</td>${cells}</tr>`;
+    const label = known.has(p.name) ? `<a class="lnk" data-player="${esc(p.name)}">${esc(p.name)}</a>` : esc(p.name);
+    return `<tr><td class="pn" style="${nameColor}">${bar}${label}</td>${cells}</tr>`;
   }).join("");
   const playersHTML = found.length
     ? `<table class="tbl"><tr><th>Joueur</th>${cols.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr>${playerRows}</table>`
